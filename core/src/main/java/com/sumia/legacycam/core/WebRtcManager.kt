@@ -12,6 +12,8 @@ import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpReceiver
+import org.webrtc.RtpTransceiver
+import org.webrtc.RendererCommon
 import org.webrtc.SessionDescription
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.SurfaceViewRenderer
@@ -81,6 +83,7 @@ class WebRtcManager(
         renderer.init(eglBase.eglBaseContext, null)
         renderer.setEnableHardwareScaler(true)
         renderer.setMirror(false)
+        renderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
         remoteVideoTrack?.addSink(renderer)
     }
 
@@ -279,9 +282,11 @@ class WebRtcManager(
                     receiver: RtpReceiver,
                     mediaStreams: Array<out org.webrtc.MediaStream>,
                 ) {
-                    val track = receiver.track() as? VideoTrack ?: return
-                    remoteVideoTrack = track
-                    remoteRenderer?.let(track::addSink)
+                    bindRemoteTrack(receiver.track() as? VideoTrack)
+                }
+
+                override fun onTrack(transceiver: RtpTransceiver) {
+                    bindRemoteTrack(transceiver.receiver.track() as? VideoTrack)
                 }
 
                 override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
@@ -330,6 +335,13 @@ class WebRtcManager(
         track.setEnabled(true)
         localRenderer?.let(track::addSink)
         peerConnection?.addTrack(track, listOf("legacycam_stream"))
+    }
+
+    private fun bindRemoteTrack(track: VideoTrack?) {
+        val videoTrack = track ?: return
+        remoteVideoTrack = videoTrack
+        videoTrack.setEnabled(true)
+        remoteRenderer?.let(videoTrack::addSink)
     }
 
     private fun createVideoCapturer(): CapturerSelection? {
