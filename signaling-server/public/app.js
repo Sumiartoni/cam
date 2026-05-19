@@ -3,10 +3,12 @@ const state = {
   selectedDeviceId: null,
   devices: [],
   socket: null,
+  socketId: 0,
   peerConnection: null,
   reconnectTimer: null,
   manualDisconnect: false,
   authChecked: false,
+  activeFeedPending: false,
 };
 
 const elements = {
@@ -200,6 +202,7 @@ async function connectViewer() {
   }
 
   clearReconnectTimer();
+  state.manualDisconnect = true;
   disconnectSocket();
   destroyPeerConnection();
   state.manualDisconnect = false;
@@ -234,9 +237,14 @@ async function connectViewer() {
 
   ensurePeerConnection();
   const socket = new WebSocket(buildWebSocketUrl());
+  const socketId = state.socketId + 1;
   state.socket = socket;
+  state.socketId = socketId;
 
   socket.addEventListener("open", () => {
+    if (!isActiveSocket(socket, socketId)) {
+      return;
+    }
     updateStatus("busy", "Viewer terhubung.", "Mengambil daftar device pada token ini.");
     sendMessage({
       type: "register",
@@ -247,6 +255,9 @@ async function connectViewer() {
   });
 
   socket.addEventListener("message", async (event) => {
+    if (!isActiveSocket(socket, socketId)) {
+      return;
+    }
     let message;
     try {
       message = JSON.parse(event.data);
@@ -258,6 +269,10 @@ async function connectViewer() {
   });
 
   socket.addEventListener("close", () => {
+    if (!isActiveSocket(socket, socketId)) {
+      return;
+    }
+    state.socket = null;
     if (state.manualDisconnect) {
       return;
     }
@@ -266,6 +281,9 @@ async function connectViewer() {
   });
 
   socket.addEventListener("error", () => {
+    if (!isActiveSocket(socket, socketId)) {
+      return;
+    }
     updateStatus("error", "Viewer gagal terhubung.", "Periksa koneksi internet dan login Anda.");
   });
 }
@@ -302,6 +320,7 @@ function ensurePeerConnection() {
     const [stream] = event.streams;
     if (stream) {
       elements.remoteVideo.srcObject = stream;
+      state.activeFeedPending = false;
       elements.videoPlaceholder.classList.add("hidden");
     }
   });
@@ -309,6 +328,7 @@ function ensurePeerConnection() {
   peerConnection.addEventListener("connectionstatechange", () => {
     const nextState = peerConnection.connectionState;
     if (nextState === "connected") {
+      state.activeFeedPending = false;
       updateStatus("online", "Live feed aktif.", "Frame video sedang diterima dari device camera.");
     } else if (nextState === "connecting") {
       updateStatus("busy", "Viewer membangun live feed.", "Menunggu video dari device camera.");
@@ -335,15 +355,22 @@ function destroyPeerConnection() {
 async function handleSocketMessage(message) {
   switch (message.type) {
     case "registered":
-      updateStatus("busy", "Viewer standby.", "Pilih salah satu device camera yang tersedia.");
+      if (!state.selectedDeviceId && !state.activeFeedPending) {
+        updateStatus("busy", "Viewer standby.", "Pilih salah satu device camera yang tersedia.");
+      }
       break;
     case "device-list":
       state.devices = Array.isArray(message.devices) ? message.devices : [];
       state.selectedDeviceId = message.target_device_id || state.selectedDeviceId;
+      if (state.selectedDeviceId && !state.devices.some((device) => device.device_id === state.selectedDeviceId)) {
+        state.selectedDeviceId = null;
+        state.activeFeedPending = false;
+      }
       renderDeviceList();
       break;
     case "peer-ready":
       state.selectedDeviceId = message.device_id || state.selectedDeviceId;
+      state.activeFeedPending = true;
       updateLiveSelection();
       updateStatus("busy", "Device siap.", "Viewer menunggu offer video dari camera.");
       break;
@@ -438,7 +465,12 @@ function selectDevice(deviceId) {
     return;
   }
 
+  if (state.selectedDeviceId === deviceId && state.activeFeedPending) {
+    return;
+  }
+
   state.selectedDeviceId = deviceId;
+  state.activeFeedPending = true;
   destroyPeerConnection();
   ensurePeerConnection();
   renderDeviceList();
@@ -472,12 +504,20 @@ function sendMessage(payload) {
 
 function disconnectSocket() {
   if (state.socket) {
-    state.socket.close(1000, "viewer-refresh");
+    const socket = state.socket;
     state.socket = null;
+    socket.close(1000, "viewer-refresh");
   }
 }
 
+function isActiveSocket(socket, socketId) {
+  return state.socket === socket && state.socketId === socketId;
+}
+
 function scheduleReconnect() {
+  if (state.manualDisconnect) {
+    return;
+  }
   clearReconnectTimer();
   state.reconnectTimer = window.setTimeout(() => {
     connectViewer();
