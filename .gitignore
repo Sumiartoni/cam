@@ -7,3 +7,5 @@ local.properties
 signaling-server/node_modules/
 keystore.properties
 keystore/
+legacycam-viewer-release/
+legacycam-camera-release/

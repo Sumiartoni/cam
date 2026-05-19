@@ -21,6 +21,9 @@ Prototype Android native untuk mengubah HP lama menjadi kamera CCTV berbasis Web
 - `viewer-app/`: aplikasi viewer dengan UI control-room.
 - `camera-app/`: aplikasi camera dengan UI device-console.
 - `signaling-server/`: server WebSocket tipis untuk routing pairing token dan pesan WebRTC.
+- `legacycam-viewer-release/`: folder root lokal untuk APK viewer hasil export.
+- `legacycam-camera-release/`: folder root lokal untuk APK camera hasil export.
+- `scripts/build-release-apks.ps1`: build release lalu copy APK ke dua folder root tersebut.
 
 ## Cara menjalankan signaling server
 
@@ -43,7 +46,7 @@ Jika dua HP berada di jaringan Wi-Fi yang sama, isi URL signaling di aplikasi de
 ws://192.168.1.20:8081/ws
 ```
 
-`/ws` dipakai sebagai path konseptual. Server contoh ini menerima koneksi di port yang sama walau path tidak diproses secara ketat.
+Server sekarang hanya menerima WebSocket pada path `/ws` dan punya health check HTTP di `/healthz`.
 
 ## Cara membuka aplikasi Android
 
@@ -65,6 +68,23 @@ camera-app\build\outputs\apk\debug\camera-app-debug.apk
 
 6. Install `viewer-app-debug.apk` di HP monitor dan `camera-app-debug.apk` di HP kamera.
 
+## Build release dan export APK
+
+Untuk build release dan menyalin APK ke folder root lokal yang tidak ikut git:
+
+```powershell
+.\scripts\build-release-apks.ps1
+```
+
+Output lokal:
+
+```text
+legacycam-viewer-release\viewer-app-release.apk
+legacycam-camera-release\camera-app-release.apk
+```
+
+Folder output tersebut sengaja di-ignore dari git.
+
 ## Catatan distribusi dan Play Protect
 
 - Untuk test lokal via APK sideload, Play Protect masih bisa menampilkan prompt scan untuk aplikasi yang belum dikenal. Itu normal untuk APK dari luar Play Store.
@@ -73,6 +93,23 @@ camera-app\build\outputs\apk\debug\camera-app-debug.apk
   - `debug`: mengizinkan `ws://` agar testing LAN tetap jalan.
   - `release`: mematikan cleartext traffic, jadi sebaiknya pakai `wss://`.
 - Untuk meminimalkan warning saat distribusi nyata, gunakan release build yang ditandatangani dan sebarkan lewat Google Play Internal Testing atau Closed Testing, bukan APK mentah dari chat/browser.
+
+## Deploy VPS
+
+Panduan deploy untuk VPS yang sudah punya app lain dan memakai IP public yang sama ada di:
+
+- [deploy/VPS-DEPLOY.md](deploy/VPS-DEPLOY.md)
+
+Ringkasnya:
+
+- app lama tetap jalan di domain lama
+- signaling LegacyCam pakai subdomain baru, misalnya `signal.domainanda.com`
+- Nginx membedakan trafik berdasarkan `server_name`
+- aplikasi Android release memakai:
+
+```text
+wss://signal.domainanda.com/ws
+```
 
 ## Alur pemakaian
 

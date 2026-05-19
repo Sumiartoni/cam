@@ -1,8 +1,21 @@
+import http from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 
 const port = Number(process.env.PORT || 8080);
-const wss = new WebSocketServer({ port });
+const host = process.env.HOST || "0.0.0.0";
+const wss = new WebSocketServer({ noServer: true });
 const rooms = new Map();
+
+const server = http.createServer((req, res) => {
+  if (req.url === "/healthz") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, service: "legacycam-signaling" }));
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: false, error: "not-found" }));
+});
 
 function send(socket, payload) {
   if (socket.readyState === WebSocket.OPEN) {
@@ -146,6 +159,18 @@ wss.on("connection", (socket) => {
   });
 });
 
+server.on("upgrade", (request, socket, head) => {
+  if (request.url !== "/ws") {
+    socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(request, socket, head, (webSocket) => {
+    wss.emit("connection", webSocket, request);
+  });
+});
+
 setInterval(() => {
   const now = Date.now();
   for (const [token, room] of rooms.entries()) {
@@ -157,4 +182,6 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
-console.log(`LegacyCam signaling server berjalan di ws://0.0.0.0:${port}/`);
+server.listen(port, host, () => {
+  console.log(`LegacyCam signaling server berjalan di ws://${host}:${port}/ws`);
+});
