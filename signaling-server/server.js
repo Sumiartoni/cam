@@ -149,8 +149,8 @@ wss.on("connection", (socket) => {
 
       if (role === "monitor") {
         if (room.monitor && room.monitor !== socket) {
-          send(socket, { type: "error", reason: "Token ini sudah dipakai monitor lain." });
-          return;
+          send(room.monitor, { type: "error", reason: "Monitor lama digantikan oleh sesi baru." });
+          room.monitor.close(1000, "monitor-replaced");
         }
         room.monitor = socket;
       }
@@ -159,6 +159,10 @@ wss.on("connection", (socket) => {
         if (!deviceId) {
           send(socket, { type: "error", reason: "Device ID camera tidak valid." });
           return;
+        }
+        const previousCamera = room.cameras.get(deviceId);
+        if (previousCamera && previousCamera.socket !== socket) {
+          previousCamera.socket.close(1000, "camera-replaced");
         }
         room.cameras.set(deviceId, { socket, label: deviceLabel });
       }
