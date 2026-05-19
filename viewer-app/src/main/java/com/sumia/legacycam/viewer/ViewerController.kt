@@ -40,6 +40,7 @@ object ViewerController {
     private var reconnectJob: Job? = null
     private var manualStopRequested: Boolean = false
     private var reconnectAttempt: Int = 0
+    private var attachedRemoteRenderer: SurfaceViewRenderer? = null
 
     fun ensureStarted(context: Context, serverUrl: String, token: String, forceRestart: Boolean = false) {
         if (serverUrl.isBlank() || token.isBlank()) {
@@ -90,10 +91,14 @@ object ViewerController {
     }
 
     fun attachRemoteRenderer(renderer: SurfaceViewRenderer) {
+        attachedRemoteRenderer = renderer
         rtcManager?.attachRemoteRenderer(renderer)
     }
 
     fun detachRemoteRenderer(renderer: SurfaceViewRenderer) {
+        if (attachedRemoteRenderer === renderer) {
+            attachedRemoteRenderer = null
+        }
         rtcManager?.detachRemoteRenderer(renderer)
     }
 
@@ -149,6 +154,7 @@ object ViewerController {
         )
 
         rtcManager = manager
+        attachedRemoteRenderer?.let(manager::attachRemoteRenderer)
         manager.start(AppRole.MONITOR)
 
         signalingClient = SignalingClient(
