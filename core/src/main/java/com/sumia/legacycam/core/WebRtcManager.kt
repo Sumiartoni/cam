@@ -82,9 +82,10 @@ class WebRtcManager(
     fun attachRemoteRenderer(renderer: SurfaceViewRenderer) {
         remoteRenderer = renderer
         renderer.init(eglBase.eglBaseContext, null)
-        renderer.setEnableHardwareScaler(true)
+        renderer.setEnableHardwareScaler(false)
         renderer.setMirror(false)
         renderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT)
+        renderer.setZOrderMediaOverlay(false)
         remoteVideoTrack?.addSink(renderer)
     }
 
