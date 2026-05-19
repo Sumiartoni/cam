@@ -1,0 +1,357 @@
+:root {
+  color-scheme: dark;
+  --bg: #09111d;
+  --bg-accent: radial-gradient(circle at top, #143153 0%, #09111d 55%, #05080d 100%);
+  --panel: rgba(11, 23, 40, 0.88);
+  --panel-border: rgba(125, 183, 255, 0.16);
+  --text: #eff6ff;
+  --muted: #9eb0ca;
+  --line: rgba(255, 255, 255, 0.08);
+  --blue: #5cb8ff;
+  --blue-strong: #1e90ff;
+  --green: #5df2b1;
+  --danger: #ff7f7f;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg-accent);
+  color: var(--text);
+  font: 16px/1.5 "Segoe UI", "Arial", sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.shell {
+  width: min(1180px, calc(100% - 24px));
+  margin: 0 auto;
+  padding: 24px 0 32px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hero h1,
+.panel-head h2,
+.live-head h2 {
+  margin: 0;
+  line-height: 1.15;
+}
+
+.subtitle,
+.panel-head p,
+.live-head p,
+.muted-text {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.layout,
+.viewer-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-panel,
+.side-panel,
+.live-panel {
+  min-width: 0;
+}
+
+.viewer-grid {
+  grid-template-columns: minmax(290px, 360px) minmax(0, 1fr);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+
+.auth-panel,
+.side-panel {
+  padding: 22px;
+}
+
+.live-panel {
+  padding: 18px;
+}
+
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.field input,
+.token-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  padding: 14px 16px;
+  outline: none;
+}
+
+.field input:focus,
+.token-input:focus {
+  border-color: rgba(92, 184, 255, 0.7);
+  box-shadow: 0 0 0 3px rgba(92, 184, 255, 0.12);
+}
+
+.token-box {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.token-input {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.token-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primary-button,
+.ghost-button {
+  border: 0;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, var(--blue), var(--blue-strong));
+  color: #05101e;
+  font-weight: 700;
+  padding: 14px 18px;
+}
+
+.primary-button.secondary {
+  margin-top: 16px;
+}
+
+.ghost-button {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+}
+
+.primary-button:hover,
+.ghost-button:hover {
+  transform: translateY(-1px);
+}
+
+.status-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  margin-top: 5px;
+  background: #69768a;
+  flex: 0 0 auto;
+}
+
+.status-dot.online {
+  background: var(--green);
+  box-shadow: 0 0 0 6px rgba(93, 242, 177, 0.12);
+}
+
+.status-dot.busy {
+  background: var(--blue);
+  box-shadow: 0 0 0 6px rgba(92, 184, 255, 0.12);
+}
+
+.status-dot.error {
+  background: var(--danger);
+  box-shadow: 0 0 0 6px rgba(255, 127, 127, 0.12);
+}
+
+.with-gap {
+  margin-top: 22px;
+}
+
+.device-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.device-button {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.device-button.active {
+  border-color: rgba(92, 184, 255, 0.54);
+  background: rgba(92, 184, 255, 0.12);
+}
+
+.device-button strong {
+  display: block;
+  font-size: 15px;
+}
+
+.device-button span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.live-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.video-shell {
+  position: relative;
+  overflow: hidden;
+  min-height: 420px;
+  border-radius: 22px;
+  background: #04070c;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#remoteVideo {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  object-fit: contain;
+  display: block;
+  background: #04070c;
+}
+
+.video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(10, 18, 29, 0.2), rgba(10, 18, 29, 0.9)),
+    radial-gradient(circle at top, rgba(30, 144, 255, 0.16), transparent 55%);
+}
+
+.video-placeholder strong {
+  font-size: 20px;
+}
+
+.video-placeholder p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  background: rgba(7, 16, 28, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px 16px;
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 960px) {
+  .viewer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .live-head,
+  .hero {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    width: min(100% - 16px, 100%);
+    padding-top: 16px;
+  }
+
+  .auth-panel,
+  .side-panel,
+  .live-panel {
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .video-shell,
+  #remoteVideo {
+    min-height: 300px;
+  }
+
+  .token-input {
+    font-size: 18px;
+  }
+}

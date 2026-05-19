@@ -1,152 +1,152 @@
-# LegacyCam CCTV
+# ant Vrs CCTV
 
-Prototype Android native untuk mengubah HP lama menjadi kamera CCTV berbasis WebRTC. Sekarang proyek ini dibagi menjadi dua aplikasi Android terpisah dengan UI yang berbeda:
+Prototype CCTV berbasis WebRTC untuk mengubah HP lama menjadi kamera dan memantaunya dari browser yang aman.
 
-- `viewer-app`: aplikasi monitor untuk membuat token pairing dan menampilkan live feed.
-- `camera-app`: aplikasi kamera untuk HP lama, memakai token dari viewer, lalu mengirim stream video lewat foreground service.
+## Fokus aktif proyek
 
-## Arsitektur singkat
+- `camera-app/`: aplikasi Android untuk HP camera.
+- `signaling-server/`: WebSocket signaling server sekaligus web viewer responsif.
+- `core/`: logic shared untuk signaling dan WebRTC.
+- `viewer-app/`: viewer Android lama. Masih ada di repo, tetapi viewer utama sekarang dipindah ke website karena lebih stabil.
 
-1. HP monitor membuka mode `Monitor`.
-2. Aplikasi membuat token pairing acak, misalnya `K7M2QW`.
-3. HP kamera membuka mode `Camera`, lalu memasukkan token tersebut.
-4. Keduanya terhubung ke signaling server melalui WebSocket.
-5. Signaling server hanya mengizinkan kamera bergabung ke token yang sudah dibuat oleh monitor.
-6. Setelah pairing, SDP offer/answer dan ICE candidate diteruskan lewat signaling server.
-7. Stream video berjalan peer-to-peer lewat WebRTC.
+## Alur sistem
+
+1. Viewer membuka website monitor dan login.
+2. Website membuat atau menyimpan token pairing, misalnya `K7M2QW`.
+3. HP camera membuka `camera-app`, lalu memasukkan token itu sekali saja.
+4. Website viewer dan HP camera terhubung ke signaling server pada `/ws`.
+5. Server hanya mengizinkan role `monitor` jika viewer sudah login dan punya `viewer_auth` jangka pendek.
+6. WebRTC offer, answer, dan ICE diteruskan lewat signaling server.
+7. Video berjalan peer-to-peer dari HP camera ke browser viewer.
 
 ## Struktur proyek
 
-- `core/`: shared logic untuk token, signaling, dan WebRTC.
-- `viewer-app/`: aplikasi viewer dengan UI control-room.
-- `camera-app/`: aplikasi camera dengan UI device-console.
-- `signaling-server/`: server WebSocket tipis untuk routing pairing token dan pesan WebRTC.
-- `legacycam-viewer-release/`: folder root lokal untuk APK viewer hasil export.
-- `legacycam-camera-release/`: folder root lokal untuk APK camera hasil export.
-- `scripts/build-release-apks.ps1`: build release lalu copy APK ke dua folder root tersebut.
+- `camera-app/`
+- `core/`
+- `signaling-server/`
+- `viewer-app/` legacy
+- `legacycam-camera-release/`
+- `legacycam-viewer-release/`
+- `scripts/build-release-apks.ps1`
 
-## Cara menjalankan signaling server
+## Menjalankan signaling server dan web viewer
 
 ```bash
 cd signaling-server
 npm install
+```
+
+Set env login viewer:
+
+```bash
+export VIEWER_ADMIN_USERNAME=admin
+export VIEWER_ADMIN_PASSWORD='ganti-password-kuat'
+export VIEWER_SESSION_SECRET='random-rahasia-panjang'
+```
+
+Jalankan server:
+
+```bash
 npm start
 ```
 
-Server default berjalan di port `8080`. Jika port itu bentrok, jalankan dengan port lain, misalnya:
+Server ini menyediakan:
+
+- `GET /` web viewer
+- `GET /healthz` health check
+- `WS /ws` signaling WebRTC
+- `POST /api/login` login viewer
+- `POST /api/logout` logout viewer
+- `GET /api/session` cek sesi login
+- `GET /api/viewer-auth` auth token pendek untuk role monitor
+
+## Build Android camera app
 
 ```powershell
-$env:PORT='8081'
-node server.js
+.\gradlew.bat :camera-app:assembleDebug
 ```
 
-Jika dua HP berada di jaringan Wi-Fi yang sama, isi URL signaling di aplikasi dengan IP laptop/PC yang menjalankan server, misalnya:
-
-```text
-ws://192.168.1.20:8081/ws
-```
-
-Server sekarang hanya menerima WebSocket pada path `/ws` dan punya health check HTTP di `/healthz`.
-
-## Cara membuka aplikasi Android
-
-1. Buka folder `legacycam-webrtc` di Android Studio.
-2. Pastikan Android SDK untuk `compileSdk 35` tersedia.
-3. Sinkronkan Gradle.
-4. Jika ingin build dua aplikasi lewat terminal Windows, gunakan:
+Release:
 
 ```powershell
-.\gradlew.bat :viewer-app:assembleDebug :camera-app:assembleDebug
+.\gradlew.bat :camera-app:assembleRelease
 ```
 
-5. APK hasil build:
+APK camera hasil export lokal:
 
 ```text
-viewer-app\build\outputs\apk\debug\viewer-app-debug.apk
-camera-app\build\outputs\apk\debug\camera-app-debug.apk
-```
-
-6. Install `viewer-app-debug.apk` di HP monitor dan `camera-app-debug.apk` di HP kamera.
-
-## Build release dan export APK
-
-Untuk build release dan menyalin APK ke folder root lokal yang tidak ikut git:
-
-```powershell
-.\scripts\build-release-apks.ps1
-```
-
-Output lokal:
-
-```text
-legacycam-viewer-release\viewer-app-release.apk
 legacycam-camera-release\camera-app-release.apk
 ```
 
-Folder output tersebut sengaja di-ignore dari git.
+## Viewer website
 
-## Catatan distribusi dan Play Protect
+Website viewer langsung disajikan dari `signaling-server/public/`.
 
-- Untuk test lokal via APK sideload, Play Protect masih bisa menampilkan prompt scan untuk aplikasi yang belum dikenal. Itu normal untuk APK dari luar Play Store.
-- Berdasarkan panduan resmi Google, pemblokiran otomatis untuk sideload terutama menyasar aplikasi yang meminta permission sensitif berisiko tinggi seperti `READ_SMS`, `RECEIVE_SMS`, `NOTIFICATION_LISTENER`, atau `ACCESSIBILITY`. Proyek ini tidak memakai permission tersebut.
-- Build aktif sekarang dibedakan seperti ini:
-  - `debug`: mengizinkan `ws://` agar testing LAN tetap jalan.
-  - `release`: mematikan cleartext traffic, jadi sebaiknya pakai `wss://`.
-- Untuk meminimalkan warning saat distribusi nyata, gunakan release build yang ditandatangani dan sebarkan lewat Google Play Internal Testing atau Closed Testing, bukan APK mentah dari chat/browser.
+Fitur utama:
+
+- login viewer
+- token monitor
+- daftar device camera
+- live feed video
+- tombol pindah kamera depan/belakang
+- responsif untuk HP dan PC
+
+## URL produksi
+
+Jika server online di domain:
+
+```text
+https://cam.zienix.me
+```
+
+Maka:
+
+- web viewer dibuka di `https://cam.zienix.me`
+- signaling WebSocket ada di `wss://cam.zienix.me/ws`
+
+## Penggunaan
+
+### Di browser viewer
+
+1. Buka `https://cam.zienix.me`
+2. Login dengan akun viewer
+3. Simpan atau generate token
+4. Bagikan token ke HP camera
+5. Klik device dari daftar saat camera sudah online
+6. Video live tampil di browser
+
+### Di HP camera
+
+1. Install `camera-app`
+2. Buka aplikasi
+3. Masukkan token dari viewer website
+4. Izinkan akses camera
+5. Foreground service akan menjaga camera tetap aktif
 
 ## Deploy VPS
 
-Panduan deploy untuk VPS yang sudah punya app lain dan memakai IP public yang sama ada di:
+Panduan ringkas ada di:
 
-- [deploy/VPS-DEPLOY.md](deploy/VPS-DEPLOY.md)
+- [deploy/VPS-DEPLOY.md](/D:/legacycam-webrtc/deploy/VPS-DEPLOY.md)
 
-Ringkasnya:
+Poin penting:
 
-- app lama tetap jalan di domain lama
-- signaling LegacyCam online di `cam.zienix.me`
-- Nginx membedakan trafik berdasarkan `server_name`
-- aplikasi Android release memakai:
+- reverse proxy harus mengarah ke seluruh root `/`, bukan hanya `/ws`
+- `cam.zienix.me` sekarang melayani website viewer sekaligus signaling
+- `VIEWER_ADMIN_PASSWORD` wajib diganti
+- `VIEWER_SESSION_SECRET` wajib diisi nilai acak yang panjang
 
-```text
-wss://cam.zienix.me/ws
-```
+## Catatan keamanan
 
-## Alur pemakaian
+- login viewer memakai session cookie `HttpOnly` dan `SameSite=Strict`
+- role `monitor` di WebSocket memerlukan `viewer_auth` jangka pendek dari server
+- password viewer default contoh tidak aman untuk produksi
+- token pairing camera tetap bersifat secret room
 
-### Di HP monitor
+## Langkah lanjutan yang layak
 
-1. Buka aplikasi `LegacyCam Viewer`.
-2. Isi URL signaling server.
-3. Tekan `Generate Token Viewer` bila ingin rotate token.
-4. Tekan `Aktifkan Viewer`.
-5. Bagikan token ke HP kamera.
-
-### Di HP kamera
-
-1. Buka aplikasi `LegacyCam Camera`.
-2. Isi URL signaling server yang sama.
-3. Masukkan token dari viewer.
-4. Izinkan akses kamera.
-5. Tekan `Nyalakan Cam`.
-
-## Catatan penting
-
-- Prototype ini saat ini memakai `STUN` publik Google. Untuk akses internet lintas NAT secara stabil, tambahkan `TURN server`.
-- `android:usesCleartextTraffic="true"` diaktifkan agar `ws://` lokal mudah dipakai saat development. Untuk produksi, pindahkan ke `wss://`.
-- Token pairing saat ini bersifat room secret. Jika ingin lebih aman, langkah berikutnya adalah menambah:
-  - expiry token,
-  - daftar perangkat terpercaya,
-  - autentikasi admin sebelum monitor boleh membuat token,
-  - push notification saat kamera online/offline.
-- Implementasi ini fokus pada `video only`. Audio sengaja tidak diaktifkan agar permission dan kompleksitas awal tetap rendah.
-- Mode kamera sekarang dijalankan lewat foreground service dengan notification persisten dan `PARTIAL_WAKE_LOCK` supaya peluang tetap hidup saat layar mati lebih tinggi.
-- Di beberapa vendor Android yang agresif, Anda tetap perlu mematikan battery optimization untuk aplikasi ini di HP kamera.
-- Folder `app/` lama tidak lagi dipakai dalam build aktif. Build sekarang memakai `core`, `viewer-app`, dan `camera-app`.
-
-## Langkah lanjutan yang masuk akal
-
-1. Tambahkan expiry token dan rotasi token otomatis.
-2. Tambahkan `TURN` dan TLS.
-3. Tambahkan penyimpanan token perangkat tepercaya di backend.
-4. Tambahkan motion detection dan notifikasi.
-5. Tambahkan auto-reconnect saat koneksi Wi-Fi berpindah atau drop.
+1. Tambahkan TURN server untuk NAT sulit.
+2. Tambahkan expiry token monitor.
+3. Tambahkan daftar perangkat camera tepercaya.
+4. Tambahkan notifikasi online/offline.
+5. Tambahkan audit log login viewer.

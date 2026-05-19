@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ant Vrs Viewer</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">ant Vrs Viewer</p>
+          <h1>Monitor CCTV dari browser</h1>
+          <p class="subtitle">Masuk dulu, lalu pilih token dan device camera yang ingin dipantau.</p>
+        </div>
+        <button id="logoutButton" class="ghost-button hidden" type="button">Keluar</button>
+      </header>
+
+      <main class="layout">
+        <section id="loginPanel" class="panel auth-panel hidden">
+          <div class="panel-head">
+            <h2>Login Viewer</h2>
+            <p>Proteksi akses monitor sebelum membuka stream camera.</p>
+          </div>
+          <form id="loginForm" class="stack">
+            <label class="field">
+              <span>Username</span>
+              <input id="usernameInput" autocomplete="username" name="username" type="text" required />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input id="passwordInput" autocomplete="current-password" name="password" type="password" required />
+            </label>
+            <button class="primary-button" type="submit">Masuk</button>
+          </form>
+        </section>
+
+        <section id="viewerPanel" class="viewer-grid hidden">
+          <aside class="panel side-panel">
+            <div class="panel-head">
+              <h2>Token Monitor</h2>
+              <p>Simpan token ini dan masukkan ke aplikasi camera.</p>
+            </div>
+
+            <div class="token-box">
+              <input id="tokenInput" class="token-input" type="text" maxlength="12" autocomplete="off" />
+              <div class="token-actions">
+                <button id="saveTokenButton" class="ghost-button" type="button">Simpan</button>
+                <button id="generateTokenButton" class="ghost-button" type="button">Token Baru</button>
+                <button id="copyTokenButton" class="ghost-button" type="button">Salin</button>
+              </div>
+            </div>
+
+            <div class="status-card">
+              <span class="status-dot" id="statusDot"></span>
+              <div>
+                <strong id="statusText">Menyiapkan viewer.</strong>
+                <p id="statusSubtext">Belum ada device yang dipilih.</p>
+              </div>
+            </div>
+
+            <button id="reloadButton" class="primary-button secondary" type="button">Muat Ulang Koneksi</button>
+
+            <div class="panel-head with-gap">
+              <h2>Device Terhubung</h2>
+              <p>Tekan salah satu device untuk membuka live feed.</p>
+            </div>
+            <div id="deviceList" class="device-list"></div>
+            <p id="deviceEmpty" class="muted-text">Belum ada device camera pada token ini.</p>
+          </aside>
+
+          <section class="panel live-panel">
+            <div class="live-head">
+              <div>
+                <h2 id="selectedDeviceName">Belum ada device dipilih</h2>
+                <p id="liveHint">Pilih device camera dari daftar untuk mulai melihat video.</p>
+              </div>
+              <button id="switchCameraButton" class="ghost-button" type="button" disabled>Pindah Kamera</button>
+            </div>
+
+            <div class="video-shell">
+              <video id="remoteVideo" autoplay playsinline muted></video>
+              <div id="videoPlaceholder" class="video-placeholder">
+                <strong>Live feed belum tampil</strong>
+                <p>Begitu stream masuk, video akan muncul di sini.</p>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+
+      <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    </div>
+
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>
