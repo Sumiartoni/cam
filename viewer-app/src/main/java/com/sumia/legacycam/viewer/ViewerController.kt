@@ -79,8 +79,7 @@ object ViewerController {
     }
 
     fun selectDevice(deviceId: String) {
-        rtcManager?.endSession()
-        rtcManager?.start(AppRole.MONITOR)
+        rtcManager?.restartPeerSession(AppRole.MONITOR)
         signalingClient?.selectCamera(deviceId)
         updateState { copy(selectedDeviceId = deviceId, status = "Viewer meminta live feed dari device cam terpilih.", errorMessage = null) }
     }
@@ -210,8 +209,7 @@ object ViewerController {
                     }
 
                     if (selectedDeviceId == null && devices.none { it.deviceId == state.value.selectedDeviceId }) {
-                        rtcManager?.endSession()
-                        rtcManager?.start(AppRole.MONITOR)
+                        rtcManager?.restartPeerSession(AppRole.MONITOR)
                     }
                 }
 
@@ -241,8 +239,7 @@ object ViewerController {
                 override fun onPeerLeft(deviceId: String?) {
                     if (!isCurrentSession(sessionId)) return
                     if (deviceId == null || deviceId == state.value.selectedDeviceId) {
-                        rtcManager?.endSession()
-                        rtcManager?.start(AppRole.MONITOR)
+                        rtcManager?.restartPeerSession(AppRole.MONITOR)
                     }
                     updateState {
                         copy(

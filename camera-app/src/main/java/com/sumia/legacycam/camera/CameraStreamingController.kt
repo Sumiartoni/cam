@@ -212,8 +212,7 @@ object CameraStreamingController {
                             errorMessage = null,
                         )
                     }
-                    rtcManager?.endSession()
-                    rtcManager?.start(AppRole.CAMERA)
+                    rtcManager?.restartPeerSession(AppRole.CAMERA)
                 }
 
                 override fun onClosed(reason: String) {

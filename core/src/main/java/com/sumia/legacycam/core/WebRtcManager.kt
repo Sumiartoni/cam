@@ -94,15 +94,30 @@ class WebRtcManager(
     }
 
     fun start(role: AppRole) {
+        if (role == AppRole.CAMERA) {
+            restartPeerSession(role)
+            if (!hasHealthyLocalCapture()) {
+                startLocalVideo()
+            } else {
+                attachExistingLocalTrack()
+            }
+            return
+        }
+
         endSession()
         ensurePeerConnection()
-        if (role == AppRole.CAMERA) {
-            startLocalVideo()
-        }
     }
 
     fun hasHealthyLocalCapture(): Boolean {
         return videoCapturer != null && videoSource != null && localVideoTrack != null && cameraHealthy
+    }
+
+    fun restartPeerSession(role: AppRole) {
+        closePeerConnection()
+        ensurePeerConnection()
+        if (role == AppRole.CAMERA) {
+            attachExistingLocalTrack()
+        }
     }
 
     fun createOffer() {
@@ -148,8 +163,7 @@ class WebRtcManager(
     }
 
     fun endSession() {
-        remoteVideoTrack?.setEnabled(false)
-        remoteVideoTrack = null
+        closePeerConnection()
 
         localVideoTrack?.setEnabled(false)
         localVideoTrack = null
@@ -166,9 +180,6 @@ class WebRtcManager(
 
         surfaceTextureHelper?.dispose()
         surfaceTextureHelper = null
-
-        peerConnection?.close()
-        peerConnection = null
     }
 
     fun switchCamera() {
@@ -280,6 +291,13 @@ class WebRtcManager(
         )
     }
 
+    private fun closePeerConnection() {
+        remoteVideoTrack?.setEnabled(false)
+        remoteVideoTrack = null
+        peerConnection?.close()
+        peerConnection = null
+    }
+
     private fun startLocalVideo() {
         val selection = createVideoCapturer() ?: run {
             listener.onError("Kamera perangkat tidak ditemukan.")
@@ -305,6 +323,13 @@ class WebRtcManager(
         surfaceTextureHelper = helper
         this.videoSource = videoSource
         localVideoTrack = videoTrack
+    }
+
+    private fun attachExistingLocalTrack() {
+        val track = localVideoTrack ?: return
+        track.setEnabled(true)
+        localRenderer?.let(track::addSink)
+        peerConnection?.addTrack(track, listOf("legacycam_stream"))
     }
 
     private fun createVideoCapturer(): CapturerSelection? {
