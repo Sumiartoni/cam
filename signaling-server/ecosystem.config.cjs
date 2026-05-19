@@ -13,6 +13,7 @@ module.exports = {
         VIEWER_ADMIN_USERNAME: "admin",
         VIEWER_ADMIN_PASSWORD: "ganti-password-kuat-anda",
         VIEWER_SESSION_SECRET: "ganti-rahasia-session-random-anda",
+        ALLOW_PUBLIC_SIGNUP: "true",
       },
       max_restarts: 10,
       restart_delay: 3000,

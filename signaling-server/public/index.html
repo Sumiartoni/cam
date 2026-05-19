@@ -21,7 +21,7 @@
         <section id="loginPanel" class="panel auth-panel hidden">
           <div class="panel-head">
             <h2>Login Viewer</h2>
-            <p>Proteksi akses monitor sebelum membuka stream camera.</p>
+            <p>Setiap akun punya 1 token sendiri. Login dari HP atau PC lain akan tetap memakai token akun yang sama.</p>
           </div>
           <form id="loginForm" class="stack">
             <label class="field">
@@ -34,20 +34,35 @@
             </label>
             <button class="primary-button" type="submit">Masuk</button>
           </form>
+
+          <div id="registerPanel" class="panel-head with-gap">
+            <h2>Buat Akun Baru</h2>
+            <p>Akun baru akan mendapat token monitor sendiri secara otomatis.</p>
+          </div>
+          <form id="registerForm" class="stack">
+            <label class="field">
+              <span>Username Baru</span>
+              <input id="registerUsernameInput" autocomplete="username" name="register_username" type="text" required />
+            </label>
+            <label class="field">
+              <span>Password Baru</span>
+              <input id="registerPasswordInput" autocomplete="new-password" name="register_password" type="password" required />
+            </label>
+            <button class="ghost-button" type="submit">Daftar Akun</button>
+          </form>
         </section>
 
         <section id="viewerPanel" class="viewer-grid hidden">
           <aside class="panel side-panel">
             <div class="panel-head">
-              <h2>Token Monitor</h2>
-              <p>Simpan token ini dan masukkan ke aplikasi camera.</p>
+              <h2>Token Akun</h2>
+              <p id="tokenOwnerText">Token akun akan muncul di sini setelah login.</p>
             </div>
 
             <div class="token-box">
-              <input id="tokenInput" class="token-input" type="text" maxlength="12" autocomplete="off" />
+              <input id="tokenInput" class="token-input" type="text" maxlength="12" autocomplete="off" readonly />
               <div class="token-actions">
-                <button id="saveTokenButton" class="ghost-button" type="button">Simpan</button>
-                <button id="generateTokenButton" class="ghost-button" type="button">Token Baru</button>
+                <button id="resetTokenButton" class="ghost-button" type="button">Ganti Token</button>
                 <button id="copyTokenButton" class="ghost-button" type="button">Salin</button>
               </div>
             </div>

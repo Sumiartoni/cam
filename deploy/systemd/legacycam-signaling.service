@@ -12,6 +12,7 @@ Environment=PORT=8080
 Environment=VIEWER_ADMIN_USERNAME=admin
 Environment=VIEWER_ADMIN_PASSWORD=ganti-password-kuat-anda
 Environment=VIEWER_SESSION_SECRET=ganti-rahasia-session-random-anda
+Environment=ALLOW_PUBLIC_SIGNUP=true
 ExecStart=/usr/bin/node /opt/legacycam-webrtc/signaling-server/server.js
 Restart=always
 RestartSec=3

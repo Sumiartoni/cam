@@ -1,5 +1,6 @@
 const state = {
-  token: loadStoredToken(),
+  token: "",
+  username: "",
   selectedDeviceId: null,
   devices: [],
   socket: null,
@@ -9,18 +10,23 @@ const state = {
   manualDisconnect: false,
   authChecked: false,
   activeFeedPending: false,
+  allowPublicSignup: true,
 };
 
 const elements = {
   loginPanel: document.getElementById("loginPanel"),
   viewerPanel: document.getElementById("viewerPanel"),
   loginForm: document.getElementById("loginForm"),
+  registerForm: document.getElementById("registerForm"),
   usernameInput: document.getElementById("usernameInput"),
   passwordInput: document.getElementById("passwordInput"),
+  registerUsernameInput: document.getElementById("registerUsernameInput"),
+  registerPasswordInput: document.getElementById("registerPasswordInput"),
+  registerPanel: document.getElementById("registerPanel"),
   logoutButton: document.getElementById("logoutButton"),
   tokenInput: document.getElementById("tokenInput"),
-  saveTokenButton: document.getElementById("saveTokenButton"),
-  generateTokenButton: document.getElementById("generateTokenButton"),
+  tokenOwnerText: document.getElementById("tokenOwnerText"),
+  resetTokenButton: document.getElementById("resetTokenButton"),
   copyTokenButton: document.getElementById("copyTokenButton"),
   reloadButton: document.getElementById("reloadButton"),
   deviceList: document.getElementById("deviceList"),
@@ -46,12 +52,11 @@ const rtcConfig = {
 bootstrap();
 
 function bootstrap() {
-  elements.tokenInput.value = state.token;
   elements.loginForm.addEventListener("submit", handleLoginSubmit);
+  elements.registerForm.addEventListener("submit", handleRegisterSubmit);
   elements.logoutButton.addEventListener("click", handleLogout);
-  elements.saveTokenButton.addEventListener("click", saveTokenFromInput);
-  elements.generateTokenButton.addEventListener("click", regenerateToken);
   elements.copyTokenButton.addEventListener("click", copyToken);
+  elements.resetTokenButton.addEventListener("click", resetToken);
   elements.reloadButton.addEventListener("click", reconnectViewer);
   elements.switchCameraButton.addEventListener("click", sendSwitchCamera);
   elements.remoteVideo.addEventListener("loadeddata", () => {
@@ -65,7 +70,10 @@ async function checkSession() {
     const response = await fetch("/api/session", { credentials: "include" });
     const payload = await response.json();
     state.authChecked = true;
+    state.allowPublicSignup = payload.allow_public_signup !== false;
+    updateRegisterAvailability();
     if (payload.authenticated) {
+      applyViewerIdentity(payload);
       showViewerPanel();
       connectViewer();
       return;
@@ -96,10 +104,43 @@ async function handleLoginSubmit(event) {
     }
 
     elements.passwordInput.value = "";
+    state.allowPublicSignup = payload.allow_public_signup !== false;
+    updateRegisterAvailability();
+    applyViewerIdentity(payload);
     showViewerPanel();
     connectViewer();
   } catch {
     showToast("Server login viewer tidak dapat dijangkau.");
+  }
+}
+
+async function handleRegisterSubmit(event) {
+  event.preventDefault();
+  const username = elements.registerUsernameInput.value.trim();
+  const password = elements.registerPasswordInput.value;
+
+  try {
+    const response = await fetch("/api/register", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      showToast(payload.error || "Pendaftaran akun gagal.");
+      return;
+    }
+
+    elements.registerPasswordInput.value = "";
+    state.allowPublicSignup = payload.allow_public_signup !== false;
+    updateRegisterAvailability();
+    applyViewerIdentity(payload);
+    showViewerPanel();
+    connectViewer();
+    showToast("Akun berhasil dibuat. Token akun siap dipakai di aplikasi camera.");
+  } catch {
+    showToast("Server pendaftaran viewer tidak dapat dijangkau.");
   }
 }
 
@@ -118,6 +159,11 @@ async function handleLogout() {
     // ignore network errors on logout
   }
 
+  state.username = "";
+  state.token = "";
+  state.selectedDeviceId = null;
+  state.devices = [];
+  renderDeviceList();
   showLoginPanel();
 }
 
@@ -125,6 +171,7 @@ function showLoginPanel() {
   elements.loginPanel.classList.remove("hidden");
   elements.viewerPanel.classList.add("hidden");
   elements.logoutButton.classList.add("hidden");
+  updateRegisterAvailability();
   updateStatus("error", "Viewer terkunci.", "Masuk dulu untuk mengakses daftar device dan live feed.");
 }
 
@@ -132,47 +179,33 @@ function showViewerPanel() {
   elements.loginPanel.classList.add("hidden");
   elements.viewerPanel.classList.remove("hidden");
   elements.logoutButton.classList.remove("hidden");
+  syncTokenView();
   updateStatus("busy", "Viewer siap.", "Menghubungkan ke signaling server.");
 }
 
-function loadStoredToken() {
-  const saved = localStorage.getItem("ant_vrs_viewer_token");
-  if (saved && /^[A-Z0-9]{6,12}$/.test(saved)) {
-    return saved;
-  }
-  const generated = generateToken();
-  localStorage.setItem("ant_vrs_viewer_token", generated);
-  return generated;
+function applyViewerIdentity(payload) {
+  state.username = String(payload.username || "").trim();
+  state.token = String(payload.token || "").trim().toUpperCase();
+  syncTokenView();
 }
 
-function saveTokenFromInput() {
-  const token = sanitizeToken(elements.tokenInput.value);
-  if (!token) {
-    showToast("Token monitor harus 6 sampai 12 karakter huruf atau angka.");
-    return;
-  }
-  state.token = token;
-  localStorage.setItem("ant_vrs_viewer_token", token);
-  elements.tokenInput.value = token;
-  state.selectedDeviceId = null;
-  state.devices = [];
-  renderDeviceList();
-  reconnectViewer();
-  showToast("Token viewer disimpan.");
+function syncTokenView() {
+  elements.tokenInput.value = state.token || "";
+  elements.tokenOwnerText.textContent = state.username
+    ? `Token akun milik ${state.username}. Buka login akun yang sama di HP atau PC lain untuk memakai token yang sama.`
+    : "Token akun akan muncul di sini setelah login.";
 }
 
-function regenerateToken() {
-  state.token = generateToken();
-  localStorage.setItem("ant_vrs_viewer_token", state.token);
-  elements.tokenInput.value = state.token;
-  state.selectedDeviceId = null;
-  state.devices = [];
-  renderDeviceList();
-  reconnectViewer();
-  showToast("Token baru dibuat.");
+function updateRegisterAvailability() {
+  elements.registerPanel.classList.toggle("hidden", !state.allowPublicSignup);
 }
 
 async function copyToken() {
+  if (!state.token) {
+    showToast("Token akun belum tersedia.");
+    return;
+  }
+
   try {
     await navigator.clipboard.writeText(state.token);
     showToast("Token berhasil disalin.");
@@ -181,19 +214,34 @@ async function copyToken() {
   }
 }
 
-function sanitizeToken(rawValue) {
-  const token = String(rawValue || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-  if (token.length < 6 || token.length > 12) {
-    return "";
+async function resetToken() {
+  if (!state.token) {
+    showToast("Login dulu sebelum mengganti token.");
+    return;
   }
-  return token;
-}
 
-function generateToken() {
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
+  try {
+    const response = await fetch("/api/token/reset", {
+      method: "POST",
+      credentials: "include",
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.token) {
+      showToast(payload.error || "Gagal mengganti token akun.");
+      return;
+    }
+
+    state.token = String(payload.token).toUpperCase();
+    state.selectedDeviceId = null;
+    state.devices = [];
+    state.activeFeedPending = false;
+    syncTokenView();
+    renderDeviceList();
+    reconnectViewer();
+    showToast("Token akun diganti. Camera perlu memakai token baru ini.");
+  } catch {
+    showToast("Server tidak dapat mengganti token akun.");
+  }
 }
 
 async function connectViewer() {
@@ -207,15 +255,10 @@ async function connectViewer() {
   destroyPeerConnection();
   state.manualDisconnect = false;
 
-  const token = sanitizeToken(elements.tokenInput.value || state.token);
-  if (!token) {
-    updateStatus("error", "Token tidak valid.", "Masukkan token monitor yang benar.");
+  if (!state.token) {
+    updateStatus("error", "Token akun belum tersedia.", "Login ulang atau buat akun baru.");
     return;
   }
-
-  state.token = token;
-  localStorage.setItem("ant_vrs_viewer_token", token);
-  elements.tokenInput.value = token;
 
   let viewerAuth;
   try {
@@ -224,12 +267,14 @@ async function connectViewer() {
       cache: "no-store",
     });
     const payload = await response.json();
-    if (!response.ok || !payload.viewer_auth) {
+    if (!response.ok || !payload.viewer_auth || !payload.token) {
       showLoginPanel();
       showToast(payload.error || "Sesi login viewer sudah habis.");
       return;
     }
     viewerAuth = payload.viewer_auth;
+    state.token = String(payload.token).toUpperCase();
+    syncTokenView();
   } catch {
     updateStatus("error", "Gagal mengambil auth viewer.", "Coba muat ulang koneksi.");
     return;
@@ -245,7 +290,7 @@ async function connectViewer() {
     if (!isActiveSocket(socket, socketId)) {
       return;
     }
-    updateStatus("busy", "Viewer terhubung.", "Mengambil daftar device pada token ini.");
+    updateStatus("busy", "Viewer terhubung.", "Mengambil daftar device pada token akun ini.");
     sendMessage({
       type: "register",
       token: state.token,
@@ -386,6 +431,7 @@ async function handleSocketMessage(message) {
       if (message.device_id && state.selectedDeviceId === message.device_id) {
         state.selectedDeviceId = null;
       }
+      state.activeFeedPending = false;
       updateLiveSelection();
       updateStatus("error", "Device keluar.", "Pilih ulang device lain saat sudah tersedia.");
       break;
@@ -454,7 +500,7 @@ function updateLiveSelection() {
   const selectedDevice = state.devices.find((device) => device.device_id === state.selectedDeviceId);
   elements.selectedDeviceName.textContent = selectedDevice?.device_label || "Belum ada device dipilih";
   elements.liveHint.textContent = selectedDevice
-    ? `Live feed untuk ${selectedDevice.device_label} akan muncul di sini.`
+    ? `Live feed untuk ${selectedDevice.device_label} pada token akun ini akan muncul di sini.`
     : "Pilih device camera dari daftar untuk mulai melihat video.";
   elements.switchCameraButton.disabled = !selectedDevice;
 }

@@ -11,11 +11,11 @@ Prototype CCTV berbasis WebRTC untuk mengubah HP lama menjadi kamera dan memanta
 
 ## Alur sistem
 
-1. Viewer membuka website monitor dan login.
-2. Website membuat atau menyimpan token pairing, misalnya `K7M2QW`.
-3. HP camera membuka `camera-app`, lalu memasukkan token itu sekali saja.
+1. Viewer membuka website monitor lalu login atau daftar akun.
+2. Server memberi setiap akun viewer tepat 1 token pairing.
+3. HP camera membuka `camera-app`, lalu memasukkan token akun itu sekali saja.
 4. Website viewer dan HP camera terhubung ke signaling server pada `/ws`.
-5. Server hanya mengizinkan role `monitor` jika viewer sudah login dan punya `viewer_auth` jangka pendek.
+5. Server hanya mengizinkan role `monitor` jika viewer sudah login, punya `viewer_auth` jangka pendek, dan token yang dipakai memang milik akun itu.
 6. WebRTC offer, answer, dan ICE diteruskan lewat signaling server.
 7. Video berjalan peer-to-peer dari HP camera ke browser viewer.
 
@@ -36,12 +36,13 @@ cd signaling-server
 npm install
 ```
 
-Set env login viewer:
+Set env bootstrap viewer:
 
 ```bash
 export VIEWER_ADMIN_USERNAME=admin
 export VIEWER_ADMIN_PASSWORD='ganti-password-kuat'
 export VIEWER_SESSION_SECRET='random-rahasia-panjang'
+export ALLOW_PUBLIC_SIGNUP='true'
 ```
 
 Jalankan server:
@@ -56,9 +57,11 @@ Server ini menyediakan:
 - `GET /healthz` health check
 - `WS /ws` signaling WebRTC
 - `POST /api/login` login viewer
+- `POST /api/register` daftar viewer baru
 - `POST /api/logout` logout viewer
 - `GET /api/session` cek sesi login
 - `GET /api/viewer-auth` auth token pendek untuk role monitor
+- `POST /api/token/reset` ganti token milik akun yang sedang login
 
 ## Build Android camera app
 
@@ -85,7 +88,8 @@ Website viewer langsung disajikan dari `signaling-server/public/`.
 Fitur utama:
 
 - login viewer
-- token monitor
+- daftar akun viewer publik
+- 1 akun = 1 token server-side
 - daftar device camera
 - live feed video
 - tombol pindah kamera depan/belakang
@@ -110,7 +114,7 @@ Maka:
 
 1. Buka `https://cam.zienix.me`
 2. Login dengan akun viewer
-3. Simpan atau generate token
+3. Lihat token milik akun
 4. Bagikan token ke HP camera
 5. Klik device dari daftar saat camera sudah online
 6. Video live tampil di browser
@@ -135,12 +139,15 @@ Poin penting:
 - `cam.zienix.me` sekarang melayani website viewer sekaligus signaling
 - `VIEWER_ADMIN_PASSWORD` wajib diganti
 - `VIEWER_SESSION_SECRET` wajib diisi nilai acak yang panjang
+- akun viewer disimpan di `signaling-server/data/viewer-users.json`
+- file data akun tidak boleh ikut Git
 
 ## Catatan keamanan
 
 - login viewer memakai session cookie `HttpOnly` dan `SameSite=Strict`
 - role `monitor` di WebSocket memerlukan `viewer_auth` jangka pendek dari server
-- password viewer default contoh tidak aman untuk produksi
+- token viewer sekarang dimiliki akun, bukan disimpan lokal di browser
+- password bootstrap default contoh tidak aman untuk produksi
 - token pairing camera tetap bersifat secret room
 
 ## Langkah lanjutan yang layak

@@ -5,6 +5,7 @@
 local.properties
 **/build/
 signaling-server/node_modules/
+signaling-server/data/
 keystore.properties
 keystore/
 legacycam-viewer-release/

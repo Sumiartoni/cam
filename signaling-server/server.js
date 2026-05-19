@@ -8,26 +8,34 @@ import { WebSocket, WebSocketServer } from "ws";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "public");
+const dataDir = path.join(__dirname, "data");
+const usersFilePath = path.join(dataDir, "viewer-users.json");
 
 const port = Number(process.env.PORT || 8080);
 const host = process.env.HOST || "0.0.0.0";
-const viewerAdminUsername = String(process.env.VIEWER_ADMIN_USERNAME || "admin").trim();
-const viewerAdminPassword = String(process.env.VIEWER_ADMIN_PASSWORD || "change-this-password").trim();
+const bootstrapUsername = String(process.env.VIEWER_ADMIN_USERNAME || "admin").trim();
+const bootstrapPassword = String(process.env.VIEWER_ADMIN_PASSWORD || "change-this-password").trim();
 const sessionSecret = String(process.env.VIEWER_SESSION_SECRET || crypto.randomBytes(32).toString("hex")).trim();
+const allowPublicSignup = String(process.env.ALLOW_PUBLIC_SIGNUP || "true").trim().toLowerCase() !== "false";
 const sessionCookieName = "ant_vrs_session";
 const viewerAuthTtlMs = 5 * 60 * 1000;
 const sessionTtlMs = 12 * 60 * 60 * 1000;
 const loginWindowMs = 10 * 60 * 1000;
 const loginLimit = 5;
+const usernamePattern = /^[a-zA-Z0-9._-]{4,32}$/;
+const passwordMinLength = 8;
 
 const wss = new WebSocketServer({ noServer: true });
 const rooms = new Map();
 const sessions = new Map();
 const loginAttempts = new Map();
+const users = loadUsers();
 
-if (viewerAdminPassword === "change-this-password") {
+bootstrapPrimaryViewerAccount();
+
+if (bootstrapPassword === "change-this-password") {
   console.warn(
-    "[security] VIEWER_ADMIN_PASSWORD belum diatur. Ubah password viewer di environment production.",
+    "[security] VIEWER_ADMIN_PASSWORD belum diatur. Ubah password viewer bootstrap di environment production.",
   );
 }
 
@@ -43,9 +51,68 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/session") {
     const session = getAuthenticatedSession(req);
+    const user = session ? getUserByUsername(session.username) : null;
     sendJson(res, 200, {
-      authenticated: Boolean(session),
-      username: session?.username ?? null,
+      authenticated: Boolean(session && user),
+      username: user?.username ?? null,
+      token: user?.token ?? null,
+      allow_public_signup: allowPublicSignup,
+    });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/register") {
+    if (!allowPublicSignup) {
+      sendJson(res, 403, { ok: false, error: "Pendaftaran akun baru sedang ditutup." });
+      return;
+    }
+
+    const ip = getRequestIp(req);
+    if (isRateLimited(ip)) {
+      sendJson(res, 429, {
+        ok: false,
+        error: "Terlalu banyak percobaan. Coba lagi beberapa menit lagi.",
+      });
+      return;
+    }
+
+    const body = await readJsonBody(req);
+    const username = String(body?.username || "").trim();
+    const password = String(body?.password || "");
+
+    const validationError = validateCredentials(username, password);
+    if (validationError) {
+      registerFailedLogin(ip);
+      sendJson(res, 400, { ok: false, error: validationError });
+      return;
+    }
+
+    const normalizedUsername = username.toLowerCase();
+    if (users.has(normalizedUsername)) {
+      registerFailedLogin(ip);
+      sendJson(res, 409, { ok: false, error: "Username sudah dipakai. Pilih username lain." });
+      return;
+    }
+
+    const token = generateUniqueToken();
+    const user = {
+      username,
+      password_hash: hashPassword(password),
+      token,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    };
+    users.set(normalizedUsername, user);
+    saveUsers();
+    clearFailedLogins(ip);
+
+    const session = createSession(user.username);
+    setSessionCookie(req, res, session.id);
+    sendJson(res, 201, {
+      ok: true,
+      username: user.username,
+      token: user.token,
+      allow_public_signup: allowPublicSignup,
     });
     return;
   }
@@ -63,17 +130,23 @@ const server = http.createServer(async (req, res) => {
     const body = await readJsonBody(req);
     const username = String(body?.username || "").trim();
     const password = String(body?.password || "");
+    const user = getUserByUsername(username);
 
-    if (!safeCompare(username, viewerAdminUsername) || !safeCompare(password, viewerAdminPassword)) {
+    if (!user || !verifyPassword(password, user.password_hash)) {
       registerFailedLogin(ip);
       sendJson(res, 401, { ok: false, error: "Username atau password tidak valid." });
       return;
     }
 
     clearFailedLogins(ip);
-    const session = createSession(viewerAdminUsername);
+    const session = createSession(user.username);
     setSessionCookie(req, res, session.id);
-    sendJson(res, 200, { ok: true, username: session.username });
+    sendJson(res, 200, {
+      ok: true,
+      username: user.username,
+      token: user.token,
+      allow_public_signup: allowPublicSignup,
+    });
     return;
   }
 
@@ -87,17 +160,39 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/token/reset") {
+    const session = getAuthenticatedSession(req);
+    const user = session ? getUserByUsername(session.username) : null;
+    if (!user) {
+      sendJson(res, 401, { ok: false, error: "Sesi login viewer tidak ditemukan." });
+      return;
+    }
+
+    const previousToken = user.token;
+    user.token = generateUniqueToken();
+    user.updated_at = Date.now();
+    saveUsers();
+    closeRoomForToken(previousToken);
+    sendJson(res, 200, {
+      ok: true,
+      token: user.token,
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/viewer-auth") {
     const session = getAuthenticatedSession(req);
-    if (!session) {
+    const user = session ? getUserByUsername(session.username) : null;
+    if (!session || !user) {
       sendJson(res, 401, { ok: false, error: "Sesi login viewer tidak ditemukan." });
       return;
     }
 
     sendJson(res, 200, {
       ok: true,
-      viewer_auth: createViewerAuthToken(session),
+      viewer_auth: createViewerAuthToken(session, user),
       expires_in_ms: viewerAuthTtlMs,
+      token: user.token,
     });
     return;
   }
@@ -282,11 +377,12 @@ function getAuthenticatedSession(req) {
   return session;
 }
 
-function createViewerAuthToken(session) {
+function createViewerAuthToken(session, user) {
   const payload = Buffer.from(
     JSON.stringify({
       sid: session.id,
-      sub: session.username,
+      sub: user.username,
+      token: user.token,
       exp: Date.now() + viewerAuthTtlMs,
       purpose: "viewer-ws",
     }),
@@ -318,12 +414,17 @@ function verifyViewerAuthToken(viewerAuth) {
   }
 
   const session = sessions.get(decoded.sid);
-  if (!session) {
+  if (!session || session.username !== decoded.sub) {
+    return null;
+  }
+
+  const user = getUserByUsername(decoded.sub);
+  if (!user || user.token !== decoded.token) {
     return null;
   }
 
   session.lastSeenAt = Date.now();
-  return session;
+  return { session, user };
 }
 
 function getRequestIp(req) {
@@ -361,6 +462,139 @@ function registerFailedLogin(ip) {
 
 function clearFailedLogins(ip) {
   loginAttempts.delete(ip);
+}
+
+function ensureUserStore() {
+  fs.mkdirSync(dataDir, { recursive: true });
+  if (!fs.existsSync(usersFilePath)) {
+    fs.writeFileSync(usersFilePath, JSON.stringify({ users: [] }, null, 2));
+  }
+}
+
+function loadUsers() {
+  ensureUserStore();
+  try {
+    const raw = fs.readFileSync(usersFilePath, "utf8");
+    const parsed = JSON.parse(raw);
+    const map = new Map();
+    for (const user of Array.isArray(parsed?.users) ? parsed.users : []) {
+      if (!user?.username || !user?.password_hash || !user?.token) {
+        continue;
+      }
+      map.set(String(user.username).toLowerCase(), {
+        username: String(user.username),
+        password_hash: String(user.password_hash),
+        token: String(user.token).toUpperCase(),
+        created_at: Number(user.created_at || Date.now()),
+        updated_at: Number(user.updated_at || Date.now()),
+      });
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+function saveUsers() {
+  ensureUserStore();
+  const serializedUsers = Array.from(users.values())
+    .sort((left, right) => left.username.localeCompare(right.username))
+    .map((user) => ({
+      username: user.username,
+      password_hash: user.password_hash,
+      token: user.token,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+    }));
+
+  const temporaryPath = `${usersFilePath}.tmp`;
+  fs.writeFileSync(temporaryPath, JSON.stringify({ users: serializedUsers }, null, 2));
+  fs.renameSync(temporaryPath, usersFilePath);
+}
+
+function getUserByUsername(username) {
+  return users.get(String(username || "").trim().toLowerCase()) ?? null;
+}
+
+function validateCredentials(username, password) {
+  if (!usernamePattern.test(username)) {
+    return "Username harus 4 sampai 32 karakter dan hanya boleh huruf, angka, titik, garis bawah, atau strip.";
+  }
+  if (String(password || "").length < passwordMinLength) {
+    return "Password minimal 8 karakter.";
+  }
+  return "";
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `scrypt$${salt}$${hash}`;
+}
+
+function verifyPassword(password, passwordHash) {
+  const [algorithm, salt, expectedHash] = String(passwordHash || "").split("$");
+  if (algorithm !== "scrypt" || !salt || !expectedHash) {
+    return false;
+  }
+
+  const actualHash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return safeCompare(actualHash, expectedHash);
+}
+
+function generateToken(length = 8) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let token = "";
+  for (let index = 0; index < length; index += 1) {
+    const randomIndex = crypto.randomInt(0, alphabet.length);
+    token += alphabet[randomIndex];
+  }
+  return token;
+}
+
+function generateUniqueToken() {
+  let token = generateToken();
+  const usedTokens = new Set(Array.from(users.values(), (user) => user.token));
+  while (usedTokens.has(token)) {
+    token = generateToken();
+  }
+  return token;
+}
+
+function bootstrapPrimaryViewerAccount() {
+  const existing = getUserByUsername(bootstrapUsername);
+  if (existing) {
+    existing.password_hash = hashPassword(bootstrapPassword);
+    existing.updated_at = Date.now();
+    if (!existing.token) {
+      existing.token = generateUniqueToken();
+    }
+    saveUsers();
+    return;
+  }
+
+  const user = {
+    username: bootstrapUsername,
+    password_hash: hashPassword(bootstrapPassword),
+    token: generateUniqueToken(),
+    created_at: Date.now(),
+    updated_at: Date.now(),
+  };
+  users.set(user.username.toLowerCase(), user);
+  saveUsers();
+}
+
+function closeRoomForToken(token) {
+  const room = rooms.get(token);
+  if (!room) {
+    return;
+  }
+
+  room.monitor?.close(1000, "token-reset");
+  for (const camera of room.cameras.values()) {
+    camera.socket.close(1000, "token-reset");
+  }
+  rooms.delete(token);
 }
 
 function getRoom(token) {
@@ -489,9 +723,14 @@ wss.on("connection", (socket) => {
       const room = getRoom(token);
 
       if (role === "monitor") {
-        const session = verifyViewerAuthToken(message.viewer_auth);
-        if (!session) {
+        const verified = verifyViewerAuthToken(message.viewer_auth);
+        if (!verified) {
           send(socket, { type: "error", reason: "Login viewer tidak valid atau sudah kedaluwarsa." });
+          return;
+        }
+
+        if (verified.user.token !== token) {
+          send(socket, { type: "error", reason: "Token ini bukan milik akun viewer yang sedang login." });
           return;
         }
 
@@ -505,7 +744,8 @@ wss.on("connection", (socket) => {
           token,
           role,
           deviceId: null,
-          viewerSessionId: session.id,
+          viewerSessionId: verified.session.id,
+          username: verified.user.username,
         };
       }
 
