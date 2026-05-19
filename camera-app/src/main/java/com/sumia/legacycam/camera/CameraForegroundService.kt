@@ -73,16 +73,6 @@ class CameraForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val stopIntent = Intent(this, CameraForegroundService::class.java).apply {
-            action = ACTION_STOP
-        }
-        val stopPendingIntent = PendingIntent.getService(
-            this,
-            302,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_camera_app)
             .setContentTitle(getString(R.string.app_name))
@@ -91,7 +81,6 @@ class CameraForegroundService : Service() {
             .setOngoing(state.isRunning)
             .setOnlyAlertOnce(true)
             .setContentIntent(openPendingIntent)
-            .addAction(0, getString(R.string.stop_camera), stopPendingIntent)
             .build()
     }
 

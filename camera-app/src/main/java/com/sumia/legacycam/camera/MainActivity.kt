@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensureBoundService(session: SavedCameraSession) {
-        if (!CameraSessionStore.isMarkedActive(this)) {
+        if (!CameraStreamingController.state.value.isRunning) {
             CameraForegroundService.start(
                 context = this,
                 serverUrl = session.serverUrl,
