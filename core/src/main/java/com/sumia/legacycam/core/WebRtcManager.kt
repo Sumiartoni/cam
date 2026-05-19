@@ -24,6 +24,7 @@ import org.webrtc.VideoTrack
 
 class WebRtcManager(
     private val context: Context,
+    private val iceServerConfigs: List<RtcIceServerConfig> = RtcConfigDefaults.iceServers,
     private val listener: Listener,
 ) {
     interface Listener {
@@ -249,10 +250,25 @@ class WebRtcManager(
             return
         }
 
-        val iceServers = listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
-        )
+        val iceServers = iceServerConfigs
+            .filter { it.urls.isNotEmpty() }
+            .map { config ->
+                PeerConnection.IceServer.builder(config.urls)
+                    .apply {
+                        if (!config.username.isNullOrBlank()) {
+                            setUsername(config.username)
+                        }
+                        if (!config.credential.isNullOrBlank()) {
+                            setPassword(config.credential)
+                        }
+                    }
+                    .createIceServer()
+            }
+            .ifEmpty {
+                RtcConfigDefaults.iceServers.map { config ->
+                    PeerConnection.IceServer.builder(config.urls).createIceServer()
+                }
+            }
 
         val config = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN

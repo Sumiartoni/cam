@@ -119,7 +119,7 @@ object ViewerController {
 
         val manager = WebRtcManager(
             session.context,
-            object : WebRtcManager.Listener {
+            listener = object : WebRtcManager.Listener {
                 override fun onLocalDescription(sessionDescription: SessionDescription) {
                     if (!isCurrentSession(sessionId)) return
                     if (sessionDescription.type == SessionDescription.Type.ANSWER) {

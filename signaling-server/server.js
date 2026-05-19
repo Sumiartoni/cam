@@ -17,6 +17,7 @@ const bootstrapUsername = String(process.env.VIEWER_ADMIN_USERNAME || "admin").t
 const bootstrapPassword = String(process.env.VIEWER_ADMIN_PASSWORD || "change-this-password").trim();
 const sessionSecret = String(process.env.VIEWER_SESSION_SECRET || crypto.randomBytes(32).toString("hex")).trim();
 const allowPublicSignup = String(process.env.ALLOW_PUBLIC_SIGNUP || "true").trim().toLowerCase() !== "false";
+const rtcIceServers = buildRtcIceServers(process.env);
 const sessionCookieName = "ant_vrs_session";
 const viewerAuthTtlMs = 5 * 60 * 1000;
 const sessionTtlMs = 12 * 60 * 60 * 1000;
@@ -57,6 +58,14 @@ const server = http.createServer(async (req, res) => {
       username: user?.username ?? null,
       token: user?.token ?? null,
       allow_public_signup: allowPublicSignup,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/rtc-config") {
+    sendJson(res, 200, {
+      ok: true,
+      ice_servers: rtcIceServers,
     });
     return;
   }
@@ -462,6 +471,38 @@ function registerFailedLogin(ip) {
 
 function clearFailedLogins(ip) {
   loginAttempts.delete(ip);
+}
+
+function buildRtcIceServers(environment) {
+  const stunUrls = splitCsv(environment.RTC_STUN_URLS || "stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302");
+  const turnUrls = splitCsv(environment.RTC_TURN_URLS || "");
+  const turnUsername = String(environment.RTC_TURN_USERNAME || "").trim();
+  const turnPassword = String(environment.RTC_TURN_PASSWORD || "").trim();
+
+  const servers = [];
+
+  if (stunUrls.length > 0) {
+    servers.push({ urls: stunUrls });
+  }
+
+  if (turnUrls.length > 0) {
+    servers.push({
+      urls: turnUrls,
+      username: turnUsername,
+      credential: turnPassword,
+    });
+  }
+
+  return servers.length > 0
+    ? servers
+    : [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }];
+}
+
+function splitCsv(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function ensureUserStore() {

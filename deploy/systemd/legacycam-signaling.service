@@ -13,6 +13,10 @@ Environment=VIEWER_ADMIN_USERNAME=admin
 Environment=VIEWER_ADMIN_PASSWORD=ganti-password-kuat-anda
 Environment=VIEWER_SESSION_SECRET=ganti-rahasia-session-random-anda
 Environment=ALLOW_PUBLIC_SIGNUP=true
+Environment=RTC_STUN_URLS=stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302
+Environment=RTC_TURN_URLS=turn:cam.zienix.me:3478?transport=udp,turn:cam.zienix.me:3478?transport=tcp
+Environment=RTC_TURN_USERNAME=antvrs-turn
+Environment=RTC_TURN_PASSWORD=ganti-password-turn-anda
 ExecStart=/usr/bin/node /opt/legacycam-webrtc/signaling-server/server.js
 Restart=always
 RestartSec=3

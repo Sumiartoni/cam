@@ -34,6 +34,10 @@ export VIEWER_ADMIN_USERNAME=admin
 export VIEWER_ADMIN_PASSWORD='ganti-password-kuat-anda'
 export VIEWER_SESSION_SECRET='isi-rahasia-random-panjang'
 export ALLOW_PUBLIC_SIGNUP='true'
+export RTC_STUN_URLS='stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302'
+export RTC_TURN_URLS='turn:cam.zienix.me:3478?transport=udp,turn:cam.zienix.me:3478?transport=tcp'
+export RTC_TURN_USERNAME='antvrs-turn'
+export RTC_TURN_PASSWORD='ganti-password-turn-anda'
 ```
 
 Keterangan:
@@ -42,6 +46,7 @@ Keterangan:
 - `ALLOW_PUBLIC_SIGNUP='true'` mengizinkan user lain membuat akun viewer sendiri.
 - setiap akun viewer akan mendapat 1 token sendiri yang disimpan server-side.
 - data akun viewer disimpan di `signaling-server/data/viewer-users.json`
+- `RTC_TURN_*` wajib diisi jika camera harus bisa dipantau dari jaringan selular atau internet yang beda NAT
 
 Kalau pakai PM2, isi juga pada `ecosystem.config.cjs`.
 
@@ -97,6 +102,57 @@ curl https://cam.zienix.me/healthz
 
 - website viewer: `https://cam.zienix.me`
 - signaling WebSocket: `wss://cam.zienix.me/ws`
+
+## 9. TURN server untuk pemantauan jarak jauh
+
+Kalau `device cam` harus bisa tampil lewat data selular atau beda jaringan, signaling saja tidak cukup. Anda perlu menjalankan `coturn`.
+
+Install:
+
+```bash
+sudo apt update
+sudo apt install -y coturn
+```
+
+Copy contoh config:
+
+```bash
+sudo cp /opt/legacycam-webrtc/deploy/coturn/turnserver.conf.example /etc/turnserver.conf
+```
+
+Edit:
+
+```bash
+sudo nano /etc/turnserver.conf
+```
+
+Ganti minimal:
+
+- `static-auth-secret`
+- `realm=cam.zienix.me`
+- path `cert` dan `pkey` bila SSL origin Anda berbeda
+
+Lalu aktifkan service:
+
+```bash
+sudo systemctl enable coturn
+sudo systemctl restart coturn
+sudo systemctl status coturn
+```
+
+Port yang perlu dibuka di firewall/security group:
+
+- `3478/tcp`
+- `3478/udp`
+- `5349/tcp`
+- rentang relay `49160-49200/tcp`
+- rentang relay `49160-49200/udp`
+
+Setelah itu pastikan env PM2 untuk signaling juga sudah diisi:
+
+- `RTC_TURN_URLS`
+- `RTC_TURN_USERNAME`
+- `RTC_TURN_PASSWORD`
 
 ## 10. Update setelah push baru
 

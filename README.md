@@ -18,6 +18,7 @@ Prototype CCTV berbasis WebRTC untuk mengubah HP lama menjadi kamera dan memanta
 5. Server hanya mengizinkan role `monitor` jika viewer sudah login, punya `viewer_auth` jangka pendek, dan token yang dipakai memang milik akun itu.
 6. WebRTC offer, answer, dan ICE diteruskan lewat signaling server.
 7. Video berjalan peer-to-peer dari HP camera ke browser viewer.
+8. Untuk jaringan selular atau NAT ketat, TURN relay diperlukan agar video tetap bisa lewat internet.
 
 ## Struktur proyek
 
@@ -62,6 +63,7 @@ Server ini menyediakan:
 - `GET /api/session` cek sesi login
 - `GET /api/viewer-auth` auth token pendek untuk role monitor
 - `POST /api/token/reset` ganti token milik akun yang sedang login
+- `GET /api/rtc-config` konfigurasi STUN/TURN untuk viewer web dan camera app
 
 ## Build Android camera app
 
@@ -94,6 +96,7 @@ Fitur utama:
 - live feed video
 - tombol pindah kamera depan/belakang
 - responsif untuk HP dan PC
+- bisa mengambil konfigurasi TURN saat runtime dari server
 
 ## URL produksi
 
@@ -141,6 +144,7 @@ Poin penting:
 - `VIEWER_SESSION_SECRET` wajib diisi nilai acak yang panjang
 - akun viewer disimpan di `signaling-server/data/viewer-users.json`
 - file data akun tidak boleh ikut Git
+- untuk jarak jauh lintas jaringan, isi juga `RTC_TURN_*` dan jalankan `coturn`
 
 ## Catatan keamanan
 

@@ -2,6 +2,8 @@ package com.sumia.legacycam.camera
 
 import android.content.Context
 import com.sumia.legacycam.core.AppRole
+import com.sumia.legacycam.core.RtcConfigDefaults
+import com.sumia.legacycam.core.RtcConfigFetcher
 import com.sumia.legacycam.core.SignalingClient
 import com.sumia.legacycam.core.WebRtcManager
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +40,7 @@ object CameraStreamingController {
     private var desiredSession: DesiredSession? = null
     private var reconnectJob: Job? = null
     private var watchdogJob: Job? = null
+    private var sessionStartJob: Job? = null
     private var manualStopRequested: Boolean = false
     private var reconnectAttempt: Int = 0
     private var lastNetworkAvailable: Boolean = true
@@ -52,6 +55,7 @@ object CameraStreamingController {
             deviceId = deviceId,
         )
         cancelReconnect()
+        cancelPendingStart()
         ensureWatchdog()
         startDesiredSession(initialStatus = "Foreground service camera memulai sesi token $token.")
     }
@@ -61,6 +65,7 @@ object CameraStreamingController {
         desiredSession = null
         reconnectAttempt = 0
         cancelReconnect()
+        cancelPendingStart()
         cancelWatchdog()
         currentSessionId += 1
         currentDeviceId = ""
@@ -72,9 +77,16 @@ object CameraStreamingController {
     }
 
     fun onNetworkAvailable() {
+        val wasOffline = !lastNetworkAvailable
         lastNetworkAvailable = true
         val session = desiredSession ?: return
         if (manualStopRequested) return
+        val signalingHealthy = signalingClient?.isConnected() == true
+        val captureHealthy = rtcManager?.hasHealthyLocalCapture() == true
+
+        if (!wasOffline && signalingHealthy && captureHealthy && mutableState.value.isRunning) {
+            return
+        }
 
         reconnectAttempt = 0
         cancelReconnect()
@@ -118,156 +130,12 @@ object CameraStreamingController {
         currentSessionId += 1
         val sessionId = currentSessionId
         currentDeviceId = session.deviceId
+        cancelPendingStart()
 
         signalingClient?.disconnect()
         signalingClient = null
         rtcManager?.release()
         rtcManager = null
-
-        val manager = WebRtcManager(
-            session.context,
-            object : WebRtcManager.Listener {
-                override fun onLocalDescription(sessionDescription: SessionDescription) {
-                    if (!isCurrentSession(sessionId)) return
-                    if (sessionDescription.type == SessionDescription.Type.OFFER) {
-                        signalingClient?.sendOffer(sessionDescription.description)
-                        updateState { copy(status = "Cam mengirim offer video ke viewer.") }
-                    }
-                }
-
-                override fun onLocalIceCandidate(candidate: IceCandidate) {
-                    if (!isCurrentSession(sessionId)) return
-                    signalingClient?.sendIceCandidate(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)
-                }
-
-                override fun onConnectionStateChanged(state: PeerConnection.PeerConnectionState) {
-                    if (!isCurrentSession(sessionId)) return
-                    val status = when (state) {
-                        PeerConnection.PeerConnectionState.NEW -> "Mesin WebRTC camera siap."
-                        PeerConnection.PeerConnectionState.CONNECTING -> "Camera sedang membangun jalur stream."
-                        PeerConnection.PeerConnectionState.CONNECTED -> "Camera sedang menyiarkan video."
-                        PeerConnection.PeerConnectionState.DISCONNECTED -> "Viewer terputus dari camera."
-                        PeerConnection.PeerConnectionState.CLOSED -> "Sesi camera ditutup."
-                        PeerConnection.PeerConnectionState.FAILED -> "Camera gagal membuat peer connection."
-                    }
-                    updateState { copy(status = status) }
-                }
-
-                override fun onError(message: String) {
-                    if (!isCurrentSession(sessionId)) return
-                    if (shouldRecoverCamera(message)) {
-                        scheduleReconnect(message, sessionId)
-                        return
-                    }
-                    updateState { copy(errorMessage = message, status = "WebRTC camera mengalami masalah.") }
-                }
-            },
-        )
-
-        rtcManager = manager
-        manager.start(AppRole.CAMERA)
-
-        signalingClient = SignalingClient(
-            serverUrl = session.serverUrl,
-            token = session.token,
-            role = AppRole.CAMERA,
-            deviceId = session.deviceId,
-            deviceLabel = "Device ${session.deviceId}",
-            listener = object : SignalingClient.Listener {
-                override fun onSocketOpen() {
-                    if (!isCurrentSession(sessionId)) return
-                    reconnectAttempt = 0
-                    updateState {
-                        copy(
-                            isRunning = true,
-                            token = session.token,
-                            serverUrl = session.serverUrl,
-                            errorMessage = null,
-                            status = "Device cam aktif. Koneksi signaling terbuka.",
-                        )
-                    }
-                }
-
-                override fun onRegistered(deviceId: String?) {
-                    if (!isCurrentSession(sessionId)) return
-                    updateState {
-                        copy(
-                            isRunning = true,
-                            token = session.token,
-                            serverUrl = session.serverUrl,
-                            status = "Device cam standby di token ${session.token}.",
-                        )
-                    }
-                }
-
-                override fun onPeerReady(deviceId: String?) {
-                    if (!isCurrentSession(sessionId)) return
-                    updateState {
-                        copy(
-                            isRunning = true,
-                            token = session.token,
-                            serverUrl = session.serverUrl,
-                            status = "Viewer ditemukan. Camera membuat offer video.",
-                        )
-                    }
-                    rtcManager?.createOffer()
-                }
-
-                override fun onDeviceList(devices: List<com.sumia.legacycam.core.ConnectedDevice>, selectedDeviceId: String?) = Unit
-
-                override fun onSwitchCamera() {
-                    if (!isCurrentSession(sessionId)) return
-                    rtcManager?.switchCamera()
-                    updateState { copy(status = "ant Vrs sedang memindahkan sisi kamera.") }
-                }
-
-                override fun onOffer(sdp: String) {
-                    if (!isCurrentSession(sessionId)) return
-                    updateState { copy(errorMessage = "Camera tidak boleh menerima offer.", status = "Urutan signaling camera tidak valid.") }
-                }
-
-                override fun onAnswer(sdp: String) {
-                    if (!isCurrentSession(sessionId)) return
-                    updateState { copy(status = "Answer diterima dari viewer.") }
-                    rtcManager?.handleRemoteAnswer(sdp)
-                }
-
-                override fun onIceCandidate(candidate: String, sdpMid: String?, sdpMLineIndex: Int) {
-                    if (!isCurrentSession(sessionId)) return
-                    rtcManager?.addRemoteIceCandidate(candidate, sdpMid, sdpMLineIndex)
-                }
-
-                override fun onPeerLeft(deviceId: String?) {
-                    if (!isCurrentSession(sessionId)) return
-                    updateState {
-                        copy(
-                            isRunning = true,
-                            status = "Viewer keluar. Device cam standby menunggu viewer kembali.",
-                            errorMessage = null,
-                        )
-                    }
-                    rtcManager?.restartPeerSession(AppRole.CAMERA)
-                }
-
-                override fun onClosed(reason: String) {
-                    if (!isCurrentSession(sessionId)) return
-                    scheduleReconnect(reason, sessionId)
-                }
-
-                override fun onError(message: String) {
-                    if (!isCurrentSession(sessionId)) return
-                    updateState {
-                        copy(
-                            isRunning = true,
-                            token = session.token,
-                            serverUrl = session.serverUrl,
-                            errorMessage = message,
-                            status = "Foreground service camera tetap berjalan, tetapi ada error signaling.",
-                        )
-                    }
-                }
-            },
-        ).also { it.connect() }
 
         updateState {
             copy(
@@ -277,6 +145,162 @@ object CameraStreamingController {
                 errorMessage = null,
                 status = initialStatus,
             )
+        }
+
+        sessionStartJob = controllerScope.launch {
+            val iceServers = runCatching {
+                RtcConfigFetcher.fetch(session.serverUrl)
+            }.getOrDefault(RtcConfigDefaults.iceServers)
+
+            if (!isCurrentSession(sessionId) || manualStopRequested) {
+                return@launch
+            }
+
+            val manager = WebRtcManager(
+                session.context,
+                iceServerConfigs = iceServers,
+                listener = object : WebRtcManager.Listener {
+                    override fun onLocalDescription(sessionDescription: SessionDescription) {
+                        if (!isCurrentSession(sessionId)) return
+                        if (sessionDescription.type == SessionDescription.Type.OFFER) {
+                            signalingClient?.sendOffer(sessionDescription.description)
+                            updateState { copy(status = "Cam mengirim offer video ke viewer.") }
+                        }
+                    }
+
+                    override fun onLocalIceCandidate(candidate: IceCandidate) {
+                        if (!isCurrentSession(sessionId)) return
+                        signalingClient?.sendIceCandidate(candidate.sdp, candidate.sdpMid, candidate.sdpMLineIndex)
+                    }
+
+                    override fun onConnectionStateChanged(state: PeerConnection.PeerConnectionState) {
+                        if (!isCurrentSession(sessionId)) return
+                        val status = when (state) {
+                            PeerConnection.PeerConnectionState.NEW -> "Mesin WebRTC camera siap."
+                            PeerConnection.PeerConnectionState.CONNECTING -> "Camera sedang membangun jalur stream."
+                            PeerConnection.PeerConnectionState.CONNECTED -> "Camera sedang menyiarkan video."
+                            PeerConnection.PeerConnectionState.DISCONNECTED -> "Viewer terputus dari camera."
+                            PeerConnection.PeerConnectionState.CLOSED -> "Sesi camera ditutup."
+                            PeerConnection.PeerConnectionState.FAILED -> "Camera gagal membuat peer connection."
+                        }
+                        updateState { copy(status = status) }
+                    }
+
+                    override fun onError(message: String) {
+                        if (!isCurrentSession(sessionId)) return
+                        if (shouldRecoverCamera(message)) {
+                            scheduleReconnect(message, sessionId)
+                            return
+                        }
+                        updateState { copy(errorMessage = message, status = "WebRTC camera mengalami masalah.") }
+                    }
+                },
+            )
+
+            rtcManager = manager
+            manager.start(AppRole.CAMERA)
+
+            signalingClient = SignalingClient(
+                serverUrl = session.serverUrl,
+                token = session.token,
+                role = AppRole.CAMERA,
+                deviceId = session.deviceId,
+                deviceLabel = "Device ${session.deviceId}",
+                listener = object : SignalingClient.Listener {
+                    override fun onSocketOpen() {
+                        if (!isCurrentSession(sessionId)) return
+                        reconnectAttempt = 0
+                        updateState {
+                            copy(
+                                isRunning = true,
+                                token = session.token,
+                                serverUrl = session.serverUrl,
+                                errorMessage = null,
+                                status = "Device cam aktif. Koneksi signaling terbuka.",
+                            )
+                        }
+                    }
+
+                    override fun onRegistered(deviceId: String?) {
+                        if (!isCurrentSession(sessionId)) return
+                        updateState {
+                            copy(
+                                isRunning = true,
+                                token = session.token,
+                                serverUrl = session.serverUrl,
+                                status = "Device cam standby di token ${session.token}.",
+                            )
+                        }
+                    }
+
+                    override fun onPeerReady(deviceId: String?) {
+                        if (!isCurrentSession(sessionId)) return
+                        updateState {
+                            copy(
+                                isRunning = true,
+                                token = session.token,
+                                serverUrl = session.serverUrl,
+                                status = "Viewer ditemukan. Camera membuat offer video.",
+                            )
+                        }
+                        rtcManager?.createOffer()
+                    }
+
+                    override fun onDeviceList(devices: List<com.sumia.legacycam.core.ConnectedDevice>, selectedDeviceId: String?) = Unit
+
+                    override fun onSwitchCamera() {
+                        if (!isCurrentSession(sessionId)) return
+                        rtcManager?.switchCamera()
+                        updateState { copy(status = "ant Vrs sedang memindahkan sisi kamera.") }
+                    }
+
+                    override fun onOffer(sdp: String) {
+                        if (!isCurrentSession(sessionId)) return
+                        updateState { copy(errorMessage = "Camera tidak boleh menerima offer.", status = "Urutan signaling camera tidak valid.") }
+                    }
+
+                    override fun onAnswer(sdp: String) {
+                        if (!isCurrentSession(sessionId)) return
+                        updateState { copy(status = "Answer diterima dari viewer.") }
+                        rtcManager?.handleRemoteAnswer(sdp)
+                    }
+
+                    override fun onIceCandidate(candidate: String, sdpMid: String?, sdpMLineIndex: Int) {
+                        if (!isCurrentSession(sessionId)) return
+                        rtcManager?.addRemoteIceCandidate(candidate, sdpMid, sdpMLineIndex)
+                    }
+
+                    override fun onPeerLeft(deviceId: String?) {
+                        if (!isCurrentSession(sessionId)) return
+                        updateState {
+                            copy(
+                                isRunning = true,
+                                status = "Viewer keluar. Device cam standby menunggu viewer kembali.",
+                                errorMessage = null,
+                            )
+                        }
+                        rtcManager?.restartPeerSession(AppRole.CAMERA)
+                    }
+
+                    override fun onClosed(reason: String) {
+                        if (!isCurrentSession(sessionId)) return
+                        scheduleReconnect(reason, sessionId)
+                    }
+
+                    override fun onError(message: String) {
+                        if (!isCurrentSession(sessionId)) return
+                        updateState {
+                            copy(
+                                isRunning = true,
+                                token = session.token,
+                                serverUrl = session.serverUrl,
+                                errorMessage = message,
+                                status = "Foreground service camera tetap berjalan, tetapi ada error signaling.",
+                            )
+                        }
+                    }
+                },
+            ).also { it.connect() }
         }
     }
 
@@ -314,6 +338,11 @@ object CameraStreamingController {
     private fun cancelReconnect() {
         reconnectJob?.cancel()
         reconnectJob = null
+    }
+
+    private fun cancelPendingStart() {
+        sessionStartJob?.cancel()
+        sessionStartJob = null
     }
 
     private fun ensureWatchdog() {

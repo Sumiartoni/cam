@@ -12,6 +12,12 @@ const state = {
   authChecked: false,
   activeFeedPending: false,
   allowPublicSignup: true,
+  rtcConfig: {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+    ],
+  },
 };
 
 const elements = {
@@ -41,13 +47,6 @@ const elements = {
   statusDot: document.getElementById("statusDot"),
   statusText: document.getElementById("statusText"),
   statusSubtext: document.getElementById("statusSubtext"),
-};
-
-const rtcConfig = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-  ],
 };
 
 bootstrap();
@@ -263,6 +262,8 @@ async function connectViewer() {
     return;
   }
 
+  await loadRtcConfig();
+
   let viewerAuth;
   try {
     const response = await fetch("/api/viewer-auth", {
@@ -349,7 +350,7 @@ function buildWebSocketUrl() {
 
 function ensurePeerConnection() {
   destroyPeerConnection();
-  const peerConnection = new RTCPeerConnection(rtcConfig);
+  const peerConnection = new RTCPeerConnection(state.rtcConfig);
   peerConnection.addTransceiver("video", { direction: "recvonly" });
 
   peerConnection.addEventListener("icecandidate", (event) => {
@@ -662,4 +663,25 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+async function loadRtcConfig() {
+  try {
+    const response = await fetch("/api/rtc-config", {
+      credentials: "include",
+      cache: "no-store",
+    });
+    const payload = await response.json();
+    if (response.ok && Array.isArray(payload.ice_servers) && payload.ice_servers.length > 0) {
+      state.rtcConfig = {
+        iceServers: payload.ice_servers.map((server) => ({
+          urls: Array.isArray(server.urls) && server.urls.length === 1 ? server.urls[0] : server.urls,
+          username: server.username || undefined,
+          credential: server.credential || undefined,
+        })),
+      };
+    }
+  } catch {
+    // keep default STUN config if rtc-config endpoint is temporarily unavailable
+  }
 }
