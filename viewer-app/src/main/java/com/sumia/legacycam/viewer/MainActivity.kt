@@ -29,6 +29,13 @@ class MainActivity : AppCompatActivity() {
         binding.tokenValue.text = session.token
         binding.tokenValue.setOnClickListener { copyTokenToClipboard() }
         binding.copyTokenButton.setOnClickListener { copyTokenToClipboard() }
+        binding.reloadButton.setOnClickListener {
+            ViewerController.reload(
+                context = this,
+                serverUrl = session.serverUrl,
+                token = session.token,
+            )
+        }
 
         ViewerSessionStore.markActive(this, true)
         ViewerController.ensureStarted(

@@ -24,13 +24,13 @@ object ViewerController {
     private var startedToken: String = ""
     private var startedServerUrl: String = ""
 
-    fun ensureStarted(context: Context, serverUrl: String, token: String) {
+    fun ensureStarted(context: Context, serverUrl: String, token: String, forceRestart: Boolean = false) {
         if (serverUrl.isBlank() || token.isBlank()) {
             updateState { copy(errorMessage = "Token atau server URL viewer belum valid.") }
             return
         }
 
-        if (state.value.isRunning && startedToken == token && startedServerUrl == serverUrl && signalingClient != null) {
+        if (!forceRestart && state.value.isRunning && startedToken == token && startedServerUrl == serverUrl && signalingClient != null) {
             return
         }
 
@@ -201,9 +201,19 @@ object ViewerController {
                 token = token,
                 serverUrl = serverUrl,
                 errorMessage = null,
-                status = "Viewer memulihkan sesi token tersimpan.",
+                status = if (forceRestart) "Viewer memuat ulang koneksi."
+                else "Viewer memulihkan sesi token tersimpan.",
             )
         }
+    }
+
+    fun reload(context: Context, serverUrl: String, token: String) {
+        ensureStarted(
+            context = context,
+            serverUrl = serverUrl,
+            token = token,
+            forceRestart = true,
+        )
     }
 
     fun selectDevice(deviceId: String) {

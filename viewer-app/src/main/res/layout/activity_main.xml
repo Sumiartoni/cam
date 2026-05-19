@@ -47,6 +47,14 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:text="@string/generate_token" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/reloadButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="@string/reload_viewer" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 

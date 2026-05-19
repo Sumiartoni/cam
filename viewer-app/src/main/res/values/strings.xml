@@ -2,6 +2,7 @@
     <string name="app_name">LegacyCam Viewer</string>
     <string name="token_panel_title">Token pairing tersimpan</string>
     <string name="generate_token">Salin Token</string>
+    <string name="reload_viewer">Reload Viewer</string>
     <string name="default_server_url">wss://cam.zienix.me/ws</string>
     <string name="device_list_label">Daftar Device Cam</string>
     <string name="no_device_connected">Belum ada device cam yang tersambung.</string>
