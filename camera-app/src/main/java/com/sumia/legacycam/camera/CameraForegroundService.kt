@@ -8,6 +8,10 @@ import android.app.Service
 import android.content.pm.ServiceInfo
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -28,11 +32,14 @@ class CameraForegroundService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var serviceStopping: Boolean = false
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         serviceStopping = false
+        registerNetworkCallback()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -65,6 +72,7 @@ class CameraForegroundService : Service() {
 
     override fun onDestroy() {
         val shouldRestart = !serviceStopping && CameraSessionStore.loadActive(this) != null
+        unregisterNetworkCallback()
         releaseWakeLock()
         releaseWifiLock()
         notificationJob?.cancel()
@@ -171,6 +179,58 @@ class CameraForegroundService : Service() {
     private fun releaseWifiLock() {
         wifiLock?.takeIf { it.isHeld }?.release()
         wifiLock = null
+    }
+
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+
+        val manager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                CameraStreamingController.onNetworkAvailable()
+            }
+
+            override fun onLost(network: Network) {
+                if (!hasValidatedInternet(manager)) {
+                    CameraStreamingController.onNetworkLost()
+                }
+            }
+
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+                    CameraStreamingController.onNetworkAvailable()
+                }
+            }
+        }
+
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+
+        manager.registerNetworkCallback(request, callback)
+        connectivityManager = manager
+        networkCallback = callback
+
+        if (hasValidatedInternet(manager)) {
+            CameraStreamingController.onNetworkAvailable()
+        } else {
+            CameraStreamingController.onNetworkLost()
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val manager = connectivityManager ?: return
+        val callback = networkCallback ?: return
+        runCatching { manager.unregisterNetworkCallback(callback) }
+        networkCallback = null
+        connectivityManager = null
+    }
+
+    private fun hasValidatedInternet(manager: ConnectivityManager): Boolean {
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     companion object {

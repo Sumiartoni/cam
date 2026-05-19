@@ -16,6 +16,12 @@ class SignalingClient(
     private val deviceLabel: String? = null,
     private val listener: Listener,
 ) {
+    enum class ConnectionState {
+        CONNECTING,
+        OPEN,
+        CLOSED,
+    }
+
     interface Listener {
         fun onSocketOpen()
         fun onRegistered(deviceId: String?)
@@ -41,8 +47,13 @@ class SignalingClient(
         .build()
 
     private var socket: WebSocket? = null
+    @Volatile
+    private var connectionState: ConnectionState = ConnectionState.CLOSED
+
+    fun isConnected(): Boolean = connectionState == ConnectionState.OPEN
 
     fun connect() {
+        connectionState = ConnectionState.CONNECTING
         val request = Request.Builder()
             .url(serverUrl)
             .build()
@@ -51,6 +62,7 @@ class SignalingClient(
             request,
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
+                    connectionState = ConnectionState.OPEN
                     listener.onSocketOpen()
                     send(
                         SignalingMessage(
@@ -68,10 +80,12 @@ class SignalingClient(
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    connectionState = ConnectionState.CLOSED
                     listener.onClosed(reason.ifBlank { "Koneksi ditutup." })
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    connectionState = ConnectionState.CLOSED
                     listener.onClosed(t.message ?: "Koneksi signaling gagal.")
                 }
             },
@@ -79,6 +93,7 @@ class SignalingClient(
     }
 
     fun disconnect() {
+        connectionState = ConnectionState.CLOSED
         socket?.close(1000, "session-ended")
         socket = null
         client.dispatcher.executorService.shutdown()

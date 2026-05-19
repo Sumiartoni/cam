@@ -40,6 +40,7 @@ object CameraStreamingController {
     private var watchdogJob: Job? = null
     private var manualStopRequested: Boolean = false
     private var reconnectAttempt: Int = 0
+    private var lastNetworkAvailable: Boolean = true
 
     fun start(context: Context, serverUrl: String, token: String, deviceId: String) {
         manualStopRequested = false
@@ -68,6 +69,39 @@ object CameraStreamingController {
         rtcManager?.release()
         rtcManager = null
         mutableState.value = CameraServiceState(status = reason)
+    }
+
+    fun onNetworkAvailable() {
+        lastNetworkAvailable = true
+        val session = desiredSession ?: return
+        if (manualStopRequested) return
+
+        reconnectAttempt = 0
+        cancelReconnect()
+        startDesiredSession(initialStatus = "Jaringan device cam kembali online. ant Vrs memulihkan koneksi camera.")
+        updateState {
+            copy(
+                isRunning = true,
+                token = session.token,
+                serverUrl = session.serverUrl,
+                errorMessage = null,
+                status = "Jaringan device cam kembali online. ant Vrs memulihkan koneksi camera.",
+            )
+        }
+    }
+
+    fun onNetworkLost() {
+        lastNetworkAvailable = false
+        val session = desiredSession ?: return
+        updateState {
+            copy(
+                isRunning = true,
+                token = session.token,
+                serverUrl = session.serverUrl,
+                errorMessage = null,
+                status = "Jaringan device cam terputus. ant Vrs menunggu koneksi kembali.",
+            )
+        }
     }
 
     fun attachPreviewRenderer(renderer: SurfaceViewRenderer) {
@@ -297,7 +331,11 @@ object CameraStreamingController {
 
                 val manager = rtcManager
                 val captureHealthy = manager?.hasHealthyLocalCapture() == true
-                if (signalingClient == null || !mutableState.value.isRunning || !captureHealthy) {
+                val signalingHealthy = signalingClient?.isConnected() == true
+                if (!lastNetworkAvailable) {
+                    continue
+                }
+                if (signalingClient == null || !signalingHealthy || !mutableState.value.isRunning || !captureHealthy) {
                     reconnectAttempt = 0
                     startDesiredSession(initialStatus = "ant Vrs memulihkan camera di background.")
                     continue
