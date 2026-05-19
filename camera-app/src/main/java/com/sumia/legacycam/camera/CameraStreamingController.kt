@@ -4,6 +4,7 @@ import android.content.Context
 import com.sumia.legacycam.core.AppRole
 import com.sumia.legacycam.core.RtcConfigDefaults
 import com.sumia.legacycam.core.RtcConfigFetcher
+import com.sumia.legacycam.core.RtcIceServerConfig
 import com.sumia.legacycam.core.SignalingClient
 import com.sumia.legacycam.core.WebRtcManager
 import kotlinx.coroutines.CoroutineScope
@@ -41,9 +42,12 @@ object CameraStreamingController {
     private var reconnectJob: Job? = null
     private var watchdogJob: Job? = null
     private var sessionStartJob: Job? = null
+    private var networkRecoveryJob: Job? = null
     private var manualStopRequested: Boolean = false
     private var reconnectAttempt: Int = 0
     private var lastNetworkAvailable: Boolean = true
+    private var cachedIceServers: List<RtcIceServerConfig> = emptyList()
+    private var cachedIceServerSource: String? = null
 
     fun start(context: Context, serverUrl: String, token: String, deviceId: String) {
         manualStopRequested = false
@@ -56,6 +60,7 @@ object CameraStreamingController {
         )
         cancelReconnect()
         cancelPendingStart()
+        cancelNetworkRecovery()
         ensureWatchdog()
         startDesiredSession(initialStatus = "Foreground service camera memulai sesi token $token.")
     }
@@ -66,6 +71,7 @@ object CameraStreamingController {
         reconnectAttempt = 0
         cancelReconnect()
         cancelPendingStart()
+        cancelNetworkRecovery()
         cancelWatchdog()
         currentSessionId += 1
         currentDeviceId = ""
@@ -90,16 +96,10 @@ object CameraStreamingController {
 
         reconnectAttempt = 0
         cancelReconnect()
-        startDesiredSession(initialStatus = "Jaringan device cam kembali online. ant Vrs memulihkan koneksi camera.")
-        updateState {
-            copy(
-                isRunning = true,
-                token = session.token,
-                serverUrl = session.serverUrl,
-                errorMessage = null,
-                status = "Jaringan device cam kembali online. ant Vrs memulihkan koneksi camera.",
-            )
-        }
+        scheduleNetworkRecovery(
+            session = session,
+            status = "Jaringan device cam kembali online. ant Vrs memulihkan koneksi camera.",
+        )
     }
 
     fun onNetworkLost() {
@@ -131,6 +131,7 @@ object CameraStreamingController {
         val sessionId = currentSessionId
         currentDeviceId = session.deviceId
         cancelPendingStart()
+        cancelNetworkRecovery()
 
         signalingClient?.disconnect()
         signalingClient = null
@@ -148,9 +149,7 @@ object CameraStreamingController {
         }
 
         sessionStartJob = controllerScope.launch {
-            val iceServers = runCatching {
-                RtcConfigFetcher.fetch(session.serverUrl)
-            }.getOrDefault(RtcConfigDefaults.iceServers)
+            val iceServers = resolveIceServers(session.serverUrl)
 
             if (!isCurrentSession(sessionId) || manualStopRequested) {
                 return@launch
@@ -340,6 +339,11 @@ object CameraStreamingController {
         reconnectJob = null
     }
 
+    private fun cancelNetworkRecovery() {
+        networkRecoveryJob?.cancel()
+        networkRecoveryJob = null
+    }
+
     private fun cancelPendingStart() {
         sessionStartJob?.cancel()
         sessionStartJob = null
@@ -393,6 +397,58 @@ object CameraStreamingController {
             "captur" in normalized ||
             "freeze" in normalized ||
             "disconnect" in normalized
+    }
+
+    private fun scheduleNetworkRecovery(
+        session: DesiredSession,
+        status: String,
+    ) {
+        if (networkRecoveryJob?.isActive == true) {
+            return
+        }
+
+        updateState {
+            copy(
+                isRunning = true,
+                token = session.token,
+                serverUrl = session.serverUrl,
+                errorMessage = null,
+                status = status,
+            )
+        }
+
+        networkRecoveryJob = controllerScope.launch {
+            delay(1500L)
+            if (!manualStopRequested && desiredSession != null && lastNetworkAvailable) {
+                startDesiredSession(initialStatus = status)
+            }
+        }
+    }
+
+    private fun resolveIceServers(serverUrl: String): List<RtcIceServerConfig> {
+        val fetched = runCatching {
+            RtcConfigFetcher.fetch(serverUrl)
+        }.getOrDefault(RtcConfigDefaults.iceServers)
+
+        val normalized = fetched.filter { it.urls.isNotEmpty() }
+        val fetchedHasTurn = normalized.any { config ->
+            config.urls.any { url -> url.startsWith("turn:") || url.startsWith("turns:") }
+        }
+
+        if (fetchedHasTurn) {
+            cachedIceServers = normalized
+            cachedIceServerSource = serverUrl
+            return normalized
+        }
+
+        val cached = cachedIceServers.takeIf {
+            it.isNotEmpty() && cachedIceServerSource == serverUrl
+        }
+        if (cached != null) {
+            return cached
+        }
+
+        return normalized.ifEmpty { RtcConfigDefaults.iceServers }
     }
 
     private fun isCurrentSession(sessionId: Long): Boolean = currentSessionId == sessionId
