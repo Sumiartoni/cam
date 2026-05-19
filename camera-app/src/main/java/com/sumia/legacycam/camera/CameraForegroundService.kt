@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.pm.ServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.net.wifi.WifiManager
@@ -26,10 +27,12 @@ class CameraForegroundService : Service() {
     private var notificationJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var serviceStopping: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        serviceStopping = false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -41,6 +44,7 @@ class CameraForegroundService : Service() {
             }
 
             ACTION_STOP -> {
+                serviceStopping = true
                 CameraSessionStore.markActive(this, false)
                 CameraStreamingController.stop("Device cam dihentikan dari foreground service.")
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -51,19 +55,29 @@ class CameraForegroundService : Service() {
 
             else -> {
                 if (!restoreSavedSession()) {
+                    serviceStopping = true
                     stopSelf()
                 }
             }
         }
-        return START_STICKY
+        return START_REDELIVER_INTENT
     }
 
     override fun onDestroy() {
+        val shouldRestart = !serviceStopping && CameraSessionStore.loadActive(this) != null
         releaseWakeLock()
         releaseWifiLock()
         notificationJob?.cancel()
         serviceScope.cancel()
         super.onDestroy()
+        if (shouldRestart) {
+            val session = CameraSessionStore.loadActive(this) ?: return
+            start(
+                context = applicationContext,
+                serverUrl = session.serverUrl,
+                token = session.token,
+            )
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -185,13 +199,15 @@ class CameraForegroundService : Service() {
 
     private fun startCameraSession(serverUrl: String, token: String) {
         if (serverUrl.isBlank() || token.isBlank()) {
+            serviceStopping = true
             stopSelf()
             return
         }
 
+        serviceStopping = false
         CameraSessionStore.saveBinding(this, serverUrl, token)
         CameraSessionStore.markActive(this, true)
-        startForeground(NOTIFICATION_ID, buildNotification(CameraStreamingController.state.value))
+        startServiceInForeground()
         ensureNotificationUpdates()
         acquireWakeLock()
         acquireWifiLock()
@@ -207,5 +223,19 @@ class CameraForegroundService : Service() {
         val session = CameraSessionStore.loadActive(this) ?: return false
         startCameraSession(session.serverUrl, session.token)
         return true
+    }
+
+    private fun startServiceInForeground() {
+        val notification = buildNotification(CameraStreamingController.state.value)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
+            )
+            return
+        }
+
+        startForeground(NOTIFICATION_ID, notification)
     }
 }
