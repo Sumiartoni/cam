@@ -7,11 +7,18 @@ import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.sumia.legacycam.camera.databinding.ActivityMainBinding
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var pendingToken: String = ""
+    private var hasBoundSession: Boolean = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -30,10 +37,12 @@ class MainActivity : AppCompatActivity() {
 
         val boundSession = CameraSessionStore.loadBound(this)
         if (boundSession != null) {
+            hasBoundSession = true
             pendingToken = boundSession.token
             ensureBoundService(boundSession)
-            finish()
-            return
+            renderBoundState()
+        } else {
+            renderInputState()
         }
 
         binding.tokenInput.setText(prefillToken())
@@ -49,6 +58,16 @@ class MainActivity : AppCompatActivity() {
             pendingToken = tokenValue
             requestPermissionsAndStart()
         }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                CameraStreamingController.state.collectLatest { state ->
+                    if (hasBoundSession || state.isRunning) {
+                        renderBoundState()
+                    }
+                }
+            }
+        }
     }
 
     private fun requestPermissionsAndStart() {
@@ -62,12 +81,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun startCameraService() {
         CameraSessionStore.saveBinding(this, getString(R.string.default_server_url), pendingToken)
+        hasBoundSession = true
         CameraForegroundService.start(
             context = this,
             serverUrl = getString(R.string.default_server_url),
             token = pendingToken,
         )
-        finish()
+        renderBoundState()
     }
 
     private fun prefillToken(): String {
@@ -75,13 +95,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensureBoundService(session: SavedCameraSession) {
-        if (!CameraStreamingController.state.value.isRunning) {
+        if (!CameraSessionStore.isMarkedActive(this)) {
             CameraForegroundService.start(
                 context = this,
                 serverUrl = session.serverUrl,
                 token = session.token,
             )
         }
+    }
+
+    private fun renderInputState() {
+        binding.tokenLayout.isVisible = true
+        binding.activateButton.isVisible = true
+        binding.runningTextValue.isVisible = false
+    }
+
+    private fun renderBoundState() {
+        binding.tokenLayout.isVisible = false
+        binding.activateButton.isVisible = false
+        binding.runningTextValue.isVisible = true
     }
 
     private fun renderTokenError(message: String) {

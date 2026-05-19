@@ -52,6 +52,11 @@ object CameraSessionStore {
         return loadBound(context)
     }
 
+    fun isMarkedActive(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ACTIVE, false)
+    }
+
     fun getOrCreateDeviceId(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val existing = prefs.getString(KEY_DEVICE_ID, "").orEmpty()
