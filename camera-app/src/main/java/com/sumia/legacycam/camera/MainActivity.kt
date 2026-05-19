@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private var serverUrl: String = "ws://YOUR_SERVER_IP:8081/ws"
+    private var serverUrl: String = "wss://cam.zienix.me/ws"
     private var token: String = ""
     private var previewAttached = false
 
@@ -92,8 +92,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (serverUrl.isBlank() || serverUrl.contains("YOUR_SERVER_IP")) {
-            renderError("Isi URL signaling valid, contoh: ws://192.168.1.20:8081/ws")
+        if (serverUrl.isBlank()) {
+            renderError("Isi URL signaling valid, contoh: wss://cam.zienix.me/ws")
             return
         }
 

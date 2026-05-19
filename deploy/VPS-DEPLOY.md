@@ -1,13 +1,13 @@
 # Deploy LegacyCam Signaling di VPS Existing
 
-Dokumen ini untuk kasus Anda: satu VPS sudah dipakai app lain, satu IP public yang sama, domain dikelola Cloudflare.
+Dokumen ini untuk kasus Anda: satu VPS sudah dipakai app lain, satu IP public yang sama, domain dikelola Cloudflare. Contoh aktif di sini memakai `cam.zienix.me`.
 
 ## Pola yang dipakai
 
 - App lama tetap jalan di domain/subdomain lama.
-- LegacyCam signaling pakai subdomain baru, misalnya `signal.domainanda.com`.
+- LegacyCam signaling pakai subdomain `cam.zienix.me`.
 - Nginx di VPS membedakan traffic berdasarkan `server_name`.
-- Node signaling server cukup listen di `127.0.0.1:8080`.
+- Node signaling server listen di `127.0.0.1:8080`.
 
 ## 1. Upload project ke VPS
 
@@ -45,7 +45,7 @@ pm2 startup
 Tambahkan record:
 
 - Type: `A`
-- Name: `signal`
+- Name: `cam`
 - Content: `IP public VPS Anda`
 - Proxy status: `Proxied` atau `DNS only`
 
@@ -58,10 +58,6 @@ Salin config contoh:
 ```bash
 sudo cp /opt/legacycam-webrtc/deploy/nginx/legacycam-signaling.conf /etc/nginx/sites-available/legacycam-signaling
 ```
-
-Ganti:
-
-- `SIGNALING_DOMAIN` -> domain asli, misalnya `signal.domainanda.com`
 
 Aktifkan site:
 
@@ -76,7 +72,7 @@ sudo systemctl reload nginx
 Jika SSL masih ditangani origin:
 
 ```bash
-sudo certbot --nginx -d signal.domainanda.com
+sudo certbot --nginx -d cam.zienix.me
 ```
 
 Jika SSL full diproksikan Cloudflare, pastikan mode SSL Cloudflare `Full` atau `Full (strict)`.
@@ -87,7 +83,7 @@ Setelah online, cek:
 
 ```bash
 curl http://127.0.0.1:8080/healthz
-curl https://signal.domainanda.com/healthz
+curl https://cam.zienix.me/healthz
 ```
 
 Harus mengembalikan JSON `ok: true`.
@@ -97,7 +93,7 @@ Harus mengembalikan JSON `ok: true`.
 Build `release`:
 
 ```text
-wss://signal.domainanda.com/ws
+wss://cam.zienix.me/ws
 ```
 
 Build `debug` lokal/LAN:
@@ -108,7 +104,7 @@ ws://IP-LAN:8081/ws
 
 ## 9. Kalau app lama sudah pakai Nginx
 
-Tidak masalah. Tambahkan satu `server` block baru saja untuk subdomain `signal.domainanda.com`.
+Tidak masalah. Tambahkan satu `server` block baru saja untuk subdomain `cam.zienix.me`.
 
 Yang penting:
 

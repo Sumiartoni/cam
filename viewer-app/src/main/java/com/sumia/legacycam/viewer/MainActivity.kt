@@ -20,7 +20,7 @@ class MainActivity : AppCompatActivity() {
 
     private var signalingClient: SignalingClient? = null
     private var activeToken: String = TokenGenerator.create()
-    private var serverUrl: String = "ws://YOUR_SERVER_IP:8081/ws"
+    private var serverUrl: String = "wss://cam.zienix.me/ws"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,9 +96,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun connectViewer() {
-        if (serverUrl.isBlank() || serverUrl.contains("YOUR_SERVER_IP")) {
+        if (serverUrl.isBlank()) {
             showError(
-                "Isi URL signaling valid, contoh: ws://192.168.1.20:8081/ws",
+                "Isi URL signaling valid, contoh: wss://cam.zienix.me/ws",
                 "URL signaling viewer belum valid.",
             )
             return

@@ -103,12 +103,12 @@ Panduan deploy untuk VPS yang sudah punya app lain dan memakai IP public yang sa
 Ringkasnya:
 
 - app lama tetap jalan di domain lama
-- signaling LegacyCam pakai subdomain baru, misalnya `signal.domainanda.com`
+- signaling LegacyCam online di `cam.zienix.me`
 - Nginx membedakan trafik berdasarkan `server_name`
 - aplikasi Android release memakai:
 
 ```text
-wss://signal.domainanda.com/ws
+wss://cam.zienix.me/ws
 ```
 
 ## Alur pemakaian

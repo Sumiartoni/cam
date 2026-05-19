@@ -7,6 +7,7 @@ Type=simple
 User=www-data
 WorkingDirectory=/opt/legacycam-webrtc/signaling-server
 Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
 Environment=PORT=8080
 ExecStart=/usr/bin/node /opt/legacycam-webrtc/signaling-server/server.js
 Restart=always
