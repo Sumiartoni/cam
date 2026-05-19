@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -24,6 +25,7 @@ class CameraForegroundService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var notificationJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -43,6 +45,7 @@ class CameraForegroundService : Service() {
                 CameraStreamingController.stop("Device cam dihentikan dari foreground service.")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 releaseWakeLock()
+                releaseWifiLock()
                 stopSelf()
             }
 
@@ -57,12 +60,25 @@ class CameraForegroundService : Service() {
 
     override fun onDestroy() {
         releaseWakeLock()
+        releaseWifiLock()
         notificationJob?.cancel()
         serviceScope.cancel()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val session = CameraSessionStore.loadActive(this)
+        if (session != null) {
+            start(
+                context = applicationContext,
+                serverUrl = session.serverUrl,
+                token = session.token,
+            )
+        }
+        super.onTaskRemoved(rootIntent)
+    }
 
     private fun buildNotification(state: CameraServiceState): Notification {
         val openIntent = Intent(this, MainActivity::class.java)
@@ -127,6 +143,21 @@ class CameraForegroundService : Service() {
         wakeLock = null
     }
 
+    private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
+
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "antVrs:CameraWifiLock").apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseWifiLock() {
+        wifiLock?.takeIf { it.isHeld }?.release()
+        wifiLock = null
+    }
+
     companion object {
         private const val CHANNEL_ID = "legacycam_camera_service"
         private const val NOTIFICATION_ID = 5501
@@ -163,6 +194,7 @@ class CameraForegroundService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification(CameraStreamingController.state.value))
         ensureNotificationUpdates()
         acquireWakeLock()
+        acquireWifiLock()
         CameraStreamingController.start(
             context = this,
             serverUrl = serverUrl,

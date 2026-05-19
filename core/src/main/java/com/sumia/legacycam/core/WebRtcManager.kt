@@ -42,6 +42,7 @@ class WebRtcManager(
     private var localRenderer: SurfaceViewRenderer? = null
     private var remoteRenderer: SurfaceViewRenderer? = null
     private var preferFrontCamera: Boolean = false
+    private var cameraHealthy: Boolean = false
 
     init {
         PeerConnectionFactory.initialize(
@@ -100,6 +101,10 @@ class WebRtcManager(
         }
     }
 
+    fun hasHealthyLocalCapture(): Boolean {
+        return videoCapturer != null && videoSource != null && localVideoTrack != null && cameraHealthy
+    }
+
     fun createOffer() {
         val constraints = MediaConstraints().apply {
             mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveVideo", "false"))
@@ -148,6 +153,7 @@ class WebRtcManager(
 
         localVideoTrack?.setEnabled(false)
         localVideoTrack = null
+        cameraHealthy = false
 
         videoSource?.dispose()
         videoSource = null
@@ -281,6 +287,7 @@ class WebRtcManager(
         }
         val capturer = selection.capturer
         preferFrontCamera = selection.isFrontFacing
+        cameraHealthy = true
 
         val videoSource = factory.createVideoSource(false)
         val helper = SurfaceTextureHelper.create("legacycam_capture", eglBase.eglBaseContext)
@@ -308,7 +315,7 @@ class WebRtcManager(
                 isFrontFacing = { camera2.isFrontFacing(it) },
             )
             if (preferred != null) {
-                val capturer = camera2.createCapturer(preferred, null)
+                val capturer = camera2.createCapturer(preferred, createCameraEventsHandler())
                 if (capturer != null) {
                     return CapturerSelection(
                         capturer = capturer,
@@ -323,11 +330,42 @@ class WebRtcManager(
             deviceNames = camera1.deviceNames.toList(),
             isFrontFacing = { camera1.isFrontFacing(it) },
         ) ?: return null
-        val capturer = camera1.createCapturer(preferred, null) ?: return null
+        val capturer = camera1.createCapturer(preferred, createCameraEventsHandler()) ?: return null
         return CapturerSelection(
             capturer = capturer,
             isFrontFacing = camera1.isFrontFacing(preferred),
         )
+    }
+
+    private fun createCameraEventsHandler(): CameraVideoCapturer.CameraEventsHandler {
+        return object : CameraVideoCapturer.CameraEventsHandler {
+            override fun onCameraError(errorDescription: String) {
+                cameraHealthy = false
+                listener.onError(errorDescription.ifBlank { "Kamera mengalami error." })
+            }
+
+            override fun onCameraDisconnected() {
+                cameraHealthy = false
+                listener.onError("Kamera terputus dari sistem Android.")
+            }
+
+            override fun onCameraFreezed(errorDescription: String) {
+                cameraHealthy = false
+                listener.onError(errorDescription.ifBlank { "Kamera berhenti merespons." })
+            }
+
+            override fun onCameraOpening(cameraName: String) {
+                cameraHealthy = true
+            }
+
+            override fun onFirstFrameAvailable() {
+                cameraHealthy = true
+            }
+
+            override fun onCameraClosed() {
+                cameraHealthy = false
+            }
+        }
     }
 
     private fun chooseDeviceName(

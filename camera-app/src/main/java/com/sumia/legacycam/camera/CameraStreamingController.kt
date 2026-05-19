@@ -37,6 +37,7 @@ object CameraStreamingController {
     private var currentDeviceId: String = ""
     private var desiredSession: DesiredSession? = null
     private var reconnectJob: Job? = null
+    private var watchdogJob: Job? = null
     private var manualStopRequested: Boolean = false
     private var reconnectAttempt: Int = 0
 
@@ -50,6 +51,7 @@ object CameraStreamingController {
             deviceId = deviceId,
         )
         cancelReconnect()
+        ensureWatchdog()
         startDesiredSession(initialStatus = "Foreground service camera memulai sesi token $token.")
     }
 
@@ -58,6 +60,7 @@ object CameraStreamingController {
         desiredSession = null
         reconnectAttempt = 0
         cancelReconnect()
+        cancelWatchdog()
         currentSessionId += 1
         currentDeviceId = ""
         signalingClient?.disconnect()
@@ -118,6 +121,10 @@ object CameraStreamingController {
 
                 override fun onError(message: String) {
                     if (!isCurrentSession(sessionId)) return
+                    if (shouldRecoverCamera(message)) {
+                        scheduleReconnect(message, sessionId)
+                        return
+                    }
                     updateState { copy(errorMessage = message, status = "WebRTC camera mengalami masalah.") }
                 }
             },
@@ -274,6 +281,52 @@ object CameraStreamingController {
     private fun cancelReconnect() {
         reconnectJob?.cancel()
         reconnectJob = null
+    }
+
+    private fun ensureWatchdog() {
+        if (watchdogJob?.isActive == true) {
+            return
+        }
+
+        watchdogJob = controllerScope.launch {
+            while (true) {
+                delay(12000L)
+                val session = desiredSession ?: continue
+                if (manualStopRequested) {
+                    continue
+                }
+
+                val manager = rtcManager
+                val captureHealthy = manager?.hasHealthyLocalCapture() == true
+                if (signalingClient == null || !mutableState.value.isRunning || !captureHealthy) {
+                    reconnectAttempt = 0
+                    startDesiredSession(initialStatus = "ant Vrs memulihkan camera di background.")
+                    continue
+                }
+
+                updateState {
+                    copy(
+                        isRunning = true,
+                        token = session.token,
+                        serverUrl = session.serverUrl,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun cancelWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = null
+    }
+
+    private fun shouldRecoverCamera(message: String): Boolean {
+        val normalized = message.lowercase()
+        return "kamera" in normalized ||
+            "camera" in normalized ||
+            "captur" in normalized ||
+            "freeze" in normalized ||
+            "disconnect" in normalized
     }
 
     private fun isCurrentSession(sessionId: Long): Boolean = currentSessionId == sessionId
