@@ -7,6 +7,7 @@ const state = {
   socketId: 0,
   peerConnection: null,
   reconnectTimer: null,
+  peerRecoveryTimer: null,
   manualDisconnect: false,
   authChecked: false,
   activeFeedPending: false,
@@ -62,6 +63,8 @@ function bootstrap() {
   elements.remoteVideo.addEventListener("loadeddata", () => {
     elements.videoPlaceholder.classList.add("hidden");
   });
+  window.addEventListener("online", handleBrowserOnline);
+  window.addEventListener("offline", handleBrowserOffline);
   checkSession();
 }
 
@@ -334,6 +337,7 @@ async function connectViewer() {
 }
 
 function reconnectViewer() {
+  clearPeerRecoveryTimer();
   updateStatus("busy", "Viewer memuat ulang koneksi.", "Menyambungkan ulang WebSocket dan WebRTC.");
   connectViewer();
 }
@@ -373,12 +377,15 @@ function ensurePeerConnection() {
   peerConnection.addEventListener("connectionstatechange", () => {
     const nextState = peerConnection.connectionState;
     if (nextState === "connected") {
+      clearPeerRecoveryTimer();
       state.activeFeedPending = false;
       updateStatus("online", "Live feed aktif.", "Frame video sedang diterima dari device camera.");
     } else if (nextState === "connecting") {
+      clearPeerRecoveryTimer();
       updateStatus("busy", "Viewer membangun live feed.", "Menunggu video dari device camera.");
     } else if (nextState === "failed" || nextState === "disconnected") {
       updateStatus("error", "Live feed terputus.", "Koneksi WebRTC perlu dibangun ulang.");
+      schedulePeerRecovery();
     }
   });
 
@@ -400,7 +407,9 @@ function destroyPeerConnection() {
 async function handleSocketMessage(message) {
   switch (message.type) {
     case "registered":
-      if (!state.selectedDeviceId && !state.activeFeedPending) {
+      if (state.selectedDeviceId) {
+        requestSelectedDeviceFeed();
+      } else if (!state.activeFeedPending) {
         updateStatus("busy", "Viewer standby.", "Pilih salah satu device camera yang tersedia.");
       }
       break;
@@ -410,6 +419,8 @@ async function handleSocketMessage(message) {
       if (state.selectedDeviceId && !state.devices.some((device) => device.device_id === state.selectedDeviceId)) {
         state.selectedDeviceId = null;
         state.activeFeedPending = false;
+      } else if (state.selectedDeviceId && !state.activeFeedPending) {
+        requestSelectedDeviceFeed();
       }
       renderDeviceList();
       break;
@@ -528,6 +539,27 @@ function selectDevice(deviceId) {
   updateStatus("busy", "Meminta live feed.", "Viewer sedang memilih device camera.");
 }
 
+function requestSelectedDeviceFeed() {
+  if (!state.selectedDeviceId) {
+    return;
+  }
+
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    reconnectViewer();
+    return;
+  }
+
+  state.activeFeedPending = true;
+  destroyPeerConnection();
+  ensurePeerConnection();
+  sendMessage({
+    type: "select-camera",
+    token: state.token,
+    target_device_id: state.selectedDeviceId,
+  });
+  updateStatus("busy", "Membangun ulang live feed.", "Viewer meminta ulang stream setelah koneksi berubah.");
+}
+
 function sendSwitchCamera() {
   if (!state.selectedDeviceId) {
     showToast("Pilih device camera dulu.");
@@ -560,6 +592,16 @@ function isActiveSocket(socket, socketId) {
   return state.socket === socket && state.socketId === socketId;
 }
 
+function schedulePeerRecovery() {
+  if (!state.selectedDeviceId) {
+    return;
+  }
+  clearPeerRecoveryTimer();
+  state.peerRecoveryTimer = window.setTimeout(() => {
+    requestSelectedDeviceFeed();
+  }, 1500);
+}
+
 function scheduleReconnect() {
   if (state.manualDisconnect) {
     return;
@@ -575,6 +617,27 @@ function clearReconnectTimer() {
     window.clearTimeout(state.reconnectTimer);
     state.reconnectTimer = null;
   }
+}
+
+function clearPeerRecoveryTimer() {
+  if (state.peerRecoveryTimer) {
+    window.clearTimeout(state.peerRecoveryTimer);
+    state.peerRecoveryTimer = null;
+  }
+}
+
+function handleBrowserOnline() {
+  showToast("Jaringan kembali online. Viewer mencoba memulihkan koneksi.");
+  if (state.selectedDeviceId) {
+    requestSelectedDeviceFeed();
+    return;
+  }
+  reconnectViewer();
+}
+
+function handleBrowserOffline() {
+  clearPeerRecoveryTimer();
+  updateStatus("error", "Jaringan viewer offline.", "Tunggu koneksi internet kembali, lalu viewer akan mencoba lagi.");
 }
 
 function updateStatus(kind, title, subtitle) {

@@ -773,6 +773,9 @@ wss.on("connection", (socket) => {
         device_id: role === "camera" ? deviceId : null,
       });
       sendDeviceList(room);
+      if (role === "monitor" && room.selectedCameraId) {
+        notifyPairReady(room);
+      }
       return;
     }
 
