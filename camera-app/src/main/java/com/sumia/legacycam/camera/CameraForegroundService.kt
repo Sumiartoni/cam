@@ -33,20 +33,23 @@ class CameraForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                startForeground(NOTIFICATION_ID, buildNotification(CameraStreamingController.state.value))
-                ensureNotificationUpdates()
-                acquireWakeLock()
-
                 val serverUrl = intent.getStringExtra(EXTRA_SERVER_URL).orEmpty()
                 val token = intent.getStringExtra(EXTRA_TOKEN).orEmpty()
-                CameraStreamingController.start(this, serverUrl, token)
+                startCameraSession(serverUrl, token)
             }
 
             ACTION_STOP -> {
+                CameraSessionStore.markActive(this, false)
                 CameraStreamingController.stop("Device cam dihentikan dari foreground service.")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 releaseWakeLock()
                 stopSelf()
+            }
+
+            else -> {
+                if (!restoreSavedSession()) {
+                    stopSelf()
+                }
             }
         }
         return START_STICKY
@@ -80,17 +83,15 @@ class CameraForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val title = if (state.isRunning) "LegacyCam Cam Aktif" else "LegacyCam Cam Standby"
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_camera_app)
-            .setContentTitle(title)
-            .setContentText(state.status)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(state.status))
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.notification_running_text))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(getString(R.string.notification_running_text)))
             .setOngoing(state.isRunning)
             .setOnlyAlertOnce(true)
             .setContentIntent(openPendingIntent)
-            .addAction(0, "Stop Cam", stopPendingIntent)
+            .addAction(0, getString(R.string.stop_camera), stopPendingIntent)
             .build()
     }
 
@@ -100,10 +101,10 @@ class CameraForegroundService : Service() {
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "LegacyCam Camera Service",
+            getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Menjaga device cam tetap aktif di background."
+            description = getString(R.string.notification_channel_description)
         }
         manager.createNotificationChannel(channel)
     }
@@ -126,7 +127,7 @@ class CameraForegroundService : Service() {
         if (wakeLock?.isHeld == true) return
 
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LegacyCam:CameraWakeLock").apply {
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "antVrs:CameraWakeLock").apply {
             setReferenceCounted(false)
             acquire()
         }
@@ -160,5 +161,30 @@ class CameraForegroundService : Service() {
             }
             context.startService(intent)
         }
+    }
+
+    private fun startCameraSession(serverUrl: String, token: String) {
+        if (serverUrl.isBlank() || token.isBlank()) {
+            stopSelf()
+            return
+        }
+
+        CameraSessionStore.saveBinding(this, serverUrl, token)
+        CameraSessionStore.markActive(this, true)
+        startForeground(NOTIFICATION_ID, buildNotification(CameraStreamingController.state.value))
+        ensureNotificationUpdates()
+        acquireWakeLock()
+        CameraStreamingController.start(
+            context = this,
+            serverUrl = serverUrl,
+            token = token,
+            deviceId = CameraSessionStore.getOrCreateDeviceId(this),
+        )
+    }
+
+    private fun restoreSavedSession(): Boolean {
+        val session = CameraSessionStore.loadActive(this) ?: return false
+        startCameraSession(session.serverUrl, session.token)
+        return true
     }
 }

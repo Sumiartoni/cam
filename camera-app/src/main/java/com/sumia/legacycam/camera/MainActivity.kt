@@ -2,32 +2,24 @@ package com.sumia.legacycam.camera
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.isVisible
-import androidx.core.widget.doAfterTextChanged
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.sumia.legacycam.camera.databinding.ActivityMainBinding
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
-    private var serverUrl: String = "wss://cam.zienix.me/ws"
-    private var token: String = ""
-    private var previewAttached = false
+    private var pendingToken: String = ""
 
     private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) {
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        if (hasRequiredPermissions()) {
             startCameraService()
         } else {
-            renderError("Izin kamera wajib diberikan untuk menjadikan device ini CCTV.")
+            renderTokenError(getString(R.string.permission_required))
         }
     }
 
@@ -36,105 +28,77 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        bindInputs()
-        bindActions()
+        val boundSession = CameraSessionStore.loadBound(this)
+        if (boundSession != null) {
+            pendingToken = boundSession.token
+            ensureBoundService(boundSession)
+            finish()
+            return
+        }
 
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                CameraStreamingController.state.collectLatest(::renderState)
+        binding.tokenInput.setText(prefillToken())
+        binding.tokenInput.setSelection(binding.tokenInput.text?.length ?: 0)
+        binding.activateButton.setOnClickListener {
+            val tokenValue = binding.tokenInput.text?.toString().orEmpty().trim().uppercase()
+            if (tokenValue.isBlank()) {
+                renderTokenError(getString(R.string.token_required))
+                return@setOnClickListener
             }
+
+            binding.tokenLayout.error = null
+            pendingToken = tokenValue
+            requestPermissionsAndStart()
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        if (CameraStreamingController.state.value.isRunning && !previewAttached) {
-            CameraStreamingController.attachPreviewRenderer(binding.previewView)
-            previewAttached = true
-        }
-    }
-
-    override fun onStop() {
-        if (previewAttached) {
-            CameraStreamingController.detachPreviewRenderer(binding.previewView)
-            previewAttached = false
-        }
-        super.onStop()
-    }
-
-    private fun bindInputs() {
-        binding.serverUrlInput.doAfterTextChanged {
-            serverUrl = it?.toString().orEmpty()
-        }
-        binding.tokenInput.doAfterTextChanged {
-            token = it?.toString().orEmpty().trim().uppercase()
-        }
-    }
-
-    private fun bindActions() {
-        binding.startCameraButton.setOnClickListener {
-            val permission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            if (permission == PackageManager.PERMISSION_GRANTED) {
-                startCameraService()
-            } else {
-                permissionLauncher.launch(Manifest.permission.CAMERA)
-            }
+    private fun requestPermissionsAndStart() {
+        if (hasRequiredPermissions()) {
+            startCameraService()
+            return
         }
 
-        binding.stopCameraButton.setOnClickListener {
-            CameraForegroundService.stop(this)
-        }
+        permissionLauncher.launch(requiredPermissions())
     }
 
     private fun startCameraService() {
-        if (token.isBlank()) {
-            renderError("Masukkan token dari aplikasi viewer.")
-            return
-        }
-
-        if (serverUrl.isBlank()) {
-            renderError("Isi URL signaling valid, contoh: wss://cam.zienix.me/ws")
-            return
-        }
-
-        hideError()
-        CameraForegroundService.start(this, serverUrl.trim(), token)
-        binding.statusValue.text = "Device cam menyalakan foreground service dengan token $token."
-    }
-
-    private fun renderState(state: CameraServiceState) {
-        binding.statusValue.text = state.status
-        binding.activeTokenValue.text = if (state.token.isBlank()) getString(R.string.no_token_yet) else state.token
-        binding.startCameraButton.text = if (state.isRunning) getString(R.string.restart_camera) else getString(R.string.start_camera)
-        binding.serviceBadge.text = if (state.isRunning) getString(R.string.service_on) else getString(R.string.service_off)
-        binding.serviceBadge.setBackgroundResource(
-            if (state.isRunning) R.drawable.camera_badge_on else R.drawable.camera_badge_off,
+        CameraSessionStore.saveBinding(this, getString(R.string.default_server_url), pendingToken)
+        CameraForegroundService.start(
+            context = this,
+            serverUrl = getString(R.string.default_server_url),
+            token = pendingToken,
         )
+        finish()
+    }
 
-        if (!state.errorMessage.isNullOrBlank()) {
-            renderError(state.errorMessage)
-        } else {
-            hideError()
-        }
+    private fun prefillToken(): String {
+        return CameraSessionStore.loadBound(this)?.token.orEmpty()
+    }
 
-        if (state.isRunning && !previewAttached) {
-            CameraStreamingController.attachPreviewRenderer(binding.previewView)
-            previewAttached = true
-        }
-
-        if (!state.isRunning && previewAttached) {
-            CameraStreamingController.detachPreviewRenderer(binding.previewView)
-            previewAttached = false
+    private fun ensureBoundService(session: SavedCameraSession) {
+        if (!CameraStreamingController.state.value.isRunning) {
+            CameraForegroundService.start(
+                context = this,
+                serverUrl = session.serverUrl,
+                token = session.token,
+            )
         }
     }
 
-    private fun renderError(message: String) {
-        binding.errorValue.isVisible = true
-        binding.errorValue.text = message
+    private fun renderTokenError(message: String) {
+        binding.tokenLayout.error = message
     }
 
-    private fun hideError() {
-        binding.errorValue.isVisible = false
-        binding.errorValue.text = ""
+    private fun hasRequiredPermissions(): Boolean {
+        return requiredPermissions().all { permission ->
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun requiredPermissions(): Array<String> {
+        val permissions = mutableListOf(Manifest.permission.CAMERA)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions += Manifest.permission.POST_NOTIFICATIONS
+        }
+        return permissions.toTypedArray()
     }
 }

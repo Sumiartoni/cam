@@ -20,10 +20,12 @@ object CameraStreamingController {
     private var rtcManager: WebRtcManager? = null
     private var signalingClient: SignalingClient? = null
     private var currentSessionId: Long = 0
+    private var currentDeviceId: String = ""
 
-    fun start(context: Context, serverUrl: String, token: String) {
+    fun start(context: Context, serverUrl: String, token: String, deviceId: String) {
         currentSessionId += 1
         val sessionId = currentSessionId
+        currentDeviceId = deviceId
 
         signalingClient?.disconnect()
         signalingClient = null
@@ -73,6 +75,8 @@ object CameraStreamingController {
             serverUrl = serverUrl,
             token = token,
             role = AppRole.CAMERA,
+            deviceId = deviceId,
+            deviceLabel = "Device $deviceId",
             listener = object : SignalingClient.Listener {
                 override fun onSocketOpen() {
                     if (!isCurrentSession(sessionId)) return
@@ -87,7 +91,7 @@ object CameraStreamingController {
                     }
                 }
 
-                override fun onRegistered() {
+                override fun onRegistered(deviceId: String?) {
                     if (!isCurrentSession(sessionId)) return
                     updateState {
                         copy(
@@ -99,7 +103,7 @@ object CameraStreamingController {
                     }
                 }
 
-                override fun onPeerReady() {
+                override fun onPeerReady(deviceId: String?) {
                     if (!isCurrentSession(sessionId)) return
                     updateState {
                         copy(
@@ -110,6 +114,14 @@ object CameraStreamingController {
                         )
                     }
                     rtcManager?.createOffer()
+                }
+
+                override fun onDeviceList(devices: List<com.sumia.legacycam.core.ConnectedDevice>, selectedDeviceId: String?) = Unit
+
+                override fun onSwitchCamera() {
+                    if (!isCurrentSession(sessionId)) return
+                    rtcManager?.switchCamera()
+                    updateState { copy(status = "ant Vrs sedang memindahkan sisi kamera.") }
                 }
 
                 override fun onOffer(sdp: String) {
@@ -128,16 +140,17 @@ object CameraStreamingController {
                     rtcManager?.addRemoteIceCandidate(candidate, sdpMid, sdpMLineIndex)
                 }
 
-                override fun onPeerLeft() {
+                override fun onPeerLeft(deviceId: String?) {
                     if (!isCurrentSession(sessionId)) return
                     updateState {
                         copy(
                             isRunning = true,
-                            status = "Viewer keluar. Camera berhenti mengirim sampai sesi baru dimulai.",
-                            errorMessage = "Viewer terputus. Aktifkan ulang jika ingin pairing ulang.",
+                            status = "Viewer keluar. Device cam standby menunggu viewer kembali.",
+                            errorMessage = null,
                         )
                     }
                     rtcManager?.endSession()
+                    rtcManager?.start(AppRole.CAMERA)
                 }
 
                 override fun onClosed(reason: String) {
@@ -165,6 +178,7 @@ object CameraStreamingController {
 
     fun stop(reason: String = "Device cam dihentikan.") {
         currentSessionId += 1
+        currentDeviceId = ""
         signalingClient?.disconnect()
         signalingClient = null
         rtcManager?.release()

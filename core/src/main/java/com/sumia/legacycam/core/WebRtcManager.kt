@@ -3,6 +3,7 @@ package com.sumia.legacycam.core
 import android.content.Context
 import org.webrtc.Camera1Enumerator
 import org.webrtc.Camera2Enumerator
+import org.webrtc.CameraVideoCapturer
 import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
@@ -40,6 +41,7 @@ class WebRtcManager(
     private var remoteVideoTrack: VideoTrack? = null
     private var localRenderer: SurfaceViewRenderer? = null
     private var remoteRenderer: SurfaceViewRenderer? = null
+    private var preferFrontCamera: Boolean = false
 
     init {
         PeerConnectionFactory.initialize(
@@ -163,6 +165,26 @@ class WebRtcManager(
         peerConnection = null
     }
 
+    fun switchCamera() {
+        val capturer = videoCapturer as? CameraVideoCapturer ?: run {
+            listener.onError("Perangkat ini tidak mendukung switch kamera.")
+            return
+        }
+
+        capturer.switchCamera(
+            object : CameraVideoCapturer.CameraSwitchHandler {
+                override fun onCameraSwitchDone(isFrontCamera: Boolean) {
+                    preferFrontCamera = isFrontCamera
+                    localRenderer?.setMirror(isFrontCamera)
+                }
+
+                override fun onCameraSwitchError(errorDescription: String?) {
+                    listener.onError(errorDescription ?: "Gagal memindahkan kamera.")
+                }
+            },
+        )
+    }
+
     fun release() {
         endSession()
         localRenderer?.release()
@@ -253,10 +275,12 @@ class WebRtcManager(
     }
 
     private fun startLocalVideo() {
-        val capturer = createVideoCapturer() ?: run {
-            listener.onError("Kamera belakang tidak ditemukan.")
+        val selection = createVideoCapturer() ?: run {
+            listener.onError("Kamera perangkat tidak ditemukan.")
             return
         }
+        val capturer = selection.capturer
+        preferFrontCamera = selection.isFrontFacing
 
         val videoSource = factory.createVideoSource(false)
         val helper = SurfaceTextureHelper.create("legacycam_capture", eglBase.eglBaseContext)
@@ -276,22 +300,49 @@ class WebRtcManager(
         localVideoTrack = videoTrack
     }
 
-    private fun createVideoCapturer(): VideoCapturer? {
+    private fun createVideoCapturer(): CapturerSelection? {
         if (Camera2Enumerator.isSupported(context)) {
             val camera2 = Camera2Enumerator(context)
-            val preferred = camera2.deviceNames.firstOrNull { !camera2.isFrontFacing(it) }
-                ?: camera2.deviceNames.firstOrNull()
+            val preferred = chooseDeviceName(
+                deviceNames = camera2.deviceNames.toList(),
+                isFrontFacing = { camera2.isFrontFacing(it) },
+            )
             if (preferred != null) {
-                return camera2.createCapturer(preferred, null)
+                val capturer = camera2.createCapturer(preferred, null)
+                if (capturer != null) {
+                    return CapturerSelection(
+                        capturer = capturer,
+                        isFrontFacing = camera2.isFrontFacing(preferred),
+                    )
+                }
             }
         }
 
         val camera1 = Camera1Enumerator(false)
-        val preferred = camera1.deviceNames.firstOrNull { !camera1.isFrontFacing(it) }
-            ?: camera1.deviceNames.firstOrNull()
-        return preferred?.let { camera1.createCapturer(it, null) }
+        val preferred = chooseDeviceName(
+            deviceNames = camera1.deviceNames.toList(),
+            isFrontFacing = { camera1.isFrontFacing(it) },
+        ) ?: return null
+        val capturer = camera1.createCapturer(preferred, null) ?: return null
+        return CapturerSelection(
+            capturer = capturer,
+            isFrontFacing = camera1.isFrontFacing(preferred),
+        )
+    }
+
+    private fun chooseDeviceName(
+        deviceNames: List<String>,
+        isFrontFacing: (String) -> Boolean,
+    ): String? {
+        val desired = deviceNames.firstOrNull { isFrontFacing(it) == preferFrontCamera }
+        return desired ?: deviceNames.firstOrNull()
     }
 }
+
+private data class CapturerSelection(
+    val capturer: VideoCapturer,
+    val isFrontFacing: Boolean,
+)
 
 private class SimpleSdpObserver(
     private val onCreateSuccess: ((SessionDescription) -> Unit)? = null,

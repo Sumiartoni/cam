@@ -1,15 +1,18 @@
 package com.sumia.legacycam.viewer
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
-import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import com.sumia.legacycam.core.AppRole
+import com.sumia.legacycam.core.ConnectedDevice
 import com.sumia.legacycam.core.SignalingClient
-import com.sumia.legacycam.core.TokenGenerator
 import com.sumia.legacycam.core.WebRtcManager
 import com.sumia.legacycam.viewer.databinding.ActivityMainBinding
+import com.google.android.material.button.MaterialButton
 import org.webrtc.IceCandidate
 import org.webrtc.PeerConnection
 import org.webrtc.SessionDescription
@@ -19,8 +22,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rtcManager: WebRtcManager
 
     private var signalingClient: SignalingClient? = null
-    private var activeToken: String = TokenGenerator.create()
-    private var serverUrl: String = "wss://cam.zienix.me/ws"
+    private var activeToken: String = ""
+    private var serverUrl: String = ""
+    private var connectedDevices: List<ConnectedDevice> = emptyList()
+    private var selectedDeviceId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,7 +38,7 @@ class MainActivity : AppCompatActivity() {
                 override fun onLocalDescription(sessionDescription: SessionDescription) {
                     if (sessionDescription.type == SessionDescription.Type.ANSWER) {
                         signalingClient?.sendAnswer(sessionDescription.description)
-                        showStatus("Viewer mengirim answer ke device camera.")
+                        showStatus("Viewer mengirim answer ke device cam terpilih.")
                     }
                 }
 
@@ -59,11 +64,22 @@ class MainActivity : AppCompatActivity() {
             },
         )
 
+        val session = ViewerSessionStore.loadSession(this, getString(R.string.default_server_url))
+        activeToken = session.token
+        serverUrl = session.serverUrl
+
+        binding.serverUrlInput.setText(serverUrl)
         rtcManager.attachRemoteRenderer(binding.remoteView)
         setupInputs()
         setupActions()
         renderToken()
-        showStatus("Viewer siap. Buat token lalu aktifkan channel monitor.")
+        renderSelectedDevice()
+        renderDeviceList()
+        showStatus("Viewer siap. Aktifkan monitor lalu pilih device cam yang ingin ditonton.")
+
+        if (session.isActive) {
+            connectViewer(autoReconnect = true)
+        }
     }
 
     override fun onDestroy() {
@@ -75,15 +91,13 @@ class MainActivity : AppCompatActivity() {
     private fun setupInputs() {
         binding.serverUrlInput.doAfterTextChanged {
             serverUrl = it?.toString().orEmpty()
+            ViewerSessionStore.saveServerUrl(this, serverUrl)
         }
     }
 
     private fun setupActions() {
         binding.generateTokenButton.setOnClickListener {
-            activeToken = TokenGenerator.create()
-            renderToken()
-            showStatus("Token viewer diperbarui. Bagikan token baru ke aplikasi camera.")
-            hideError()
+            copyTokenToClipboard()
         }
 
         binding.connectButton.setOnClickListener {
@@ -93,9 +107,18 @@ class MainActivity : AppCompatActivity() {
         binding.disconnectButton.setOnClickListener {
             stopViewer("Viewer dimatikan.")
         }
+
+        binding.switchCameraButton.setOnClickListener {
+            if (selectedDeviceId == null) {
+                showError("Pilih device cam terlebih dulu.", "Viewer belum punya device aktif.")
+                return@setOnClickListener
+            }
+            signalingClient?.sendSwitchCamera()
+            showStatus("Viewer mengirim perintah pindah kamera ke device cam terpilih.")
+        }
     }
 
-    private fun connectViewer() {
+    private fun connectViewer(autoReconnect: Boolean = false) {
         if (serverUrl.isBlank()) {
             showError(
                 "Isi URL signaling valid, contoh: wss://cam.zienix.me/ws",
@@ -104,7 +127,15 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        stopViewer("Viewer memulai sesi baru.")
+        ViewerSessionStore.saveToken(this, activeToken)
+        ViewerSessionStore.saveServerUrl(this, serverUrl.trim())
+        ViewerSessionStore.markActive(this, true)
+
+        stopViewer(
+            if (autoReconnect) "Viewer memulihkan sesi token tersimpan."
+            else "Viewer memulai sesi baru.",
+            preserveSession = true,
+        )
         rtcManager.start(AppRole.MONITOR)
         signalingClient = SignalingClient(
             serverUrl = serverUrl.trim(),
@@ -115,13 +146,30 @@ class MainActivity : AppCompatActivity() {
                     showStatus("Viewer terhubung ke signaling server.")
                 }
 
-                override fun onRegistered() {
+                override fun onRegistered(deviceId: String?) {
                     showStatus("Viewer standby pada token $activeToken.")
                 }
 
-                override fun onPeerReady() {
-                    showStatus("Device camera masuk. Viewer menunggu offer video.")
+                override fun onPeerReady(deviceId: String?) {
+                    selectedDeviceId = deviceId ?: selectedDeviceId
+                    renderSelectedDevice()
+                    renderDeviceList()
+                    showStatus("Device cam terpilih siap. Viewer menunggu offer video.")
                 }
+
+                override fun onDeviceList(devices: List<ConnectedDevice>, selectedDeviceId: String?) {
+                    connectedDevices = devices
+                    if (selectedDeviceId != null) {
+                        this@MainActivity.selectedDeviceId = selectedDeviceId
+                    } else if (connectedDevices.none { it.deviceId == this@MainActivity.selectedDeviceId }) {
+                        this@MainActivity.selectedDeviceId = null
+                        rtcManager.endSession()
+                    }
+                    renderSelectedDevice()
+                    renderDeviceList()
+                }
+
+                override fun onSwitchCamera() = Unit
 
                 override fun onOffer(sdp: String) {
                     showStatus("Offer diterima. Viewer membuat answer.")
@@ -136,9 +184,11 @@ class MainActivity : AppCompatActivity() {
                     rtcManager.addRemoteIceCandidate(candidate, sdpMid, sdpMLineIndex)
                 }
 
-                override fun onPeerLeft() {
-                    rtcManager.start(AppRole.MONITOR)
-                    showStatus("Camera keluar. Viewer tetap aktif menunggu camera lain dengan token yang sama.")
+                override fun onPeerLeft(deviceId: String?) {
+                    if (deviceId == null || deviceId == selectedDeviceId) {
+                        rtcManager.endSession()
+                    }
+                    showStatus("Device cam keluar. Viewer tetap aktif menunggu device berikutnya.")
                 }
 
                 override fun onClosed(reason: String) {
@@ -152,16 +202,61 @@ class MainActivity : AppCompatActivity() {
         ).also { it.connect() }
     }
 
-    private fun stopViewer(status: String) {
+    private fun stopViewer(status: String, preserveSession: Boolean = false) {
+        if (!preserveSession) {
+            ViewerSessionStore.markActive(this, false)
+        }
         signalingClient?.disconnect()
         signalingClient = null
         rtcManager.endSession()
+        connectedDevices = emptyList()
+        selectedDeviceId = null
+        renderSelectedDevice()
+        renderDeviceList()
         showStatus(status)
         hideError()
     }
 
     private fun renderToken() {
         binding.tokenValue.text = activeToken
+    }
+
+    private fun renderSelectedDevice() {
+        val selectedDevice = connectedDevices.firstOrNull { it.deviceId == selectedDeviceId }
+        binding.selectedDeviceValue.text = selectedDevice?.deviceLabel ?: getString(R.string.no_device_selected)
+    }
+
+    private fun renderDeviceList() {
+        binding.deviceListContainer.removeAllViews()
+        binding.deviceEmptyValue.isVisible = connectedDevices.isEmpty()
+        connectedDevices.forEach { device ->
+            val button = MaterialButton(this).apply {
+                text = device.deviceLabel
+                isAllCaps = false
+                setOnClickListener { selectDevice(device) }
+                if (device.deviceId == selectedDeviceId) {
+                    setIconResource(android.R.drawable.presence_online)
+                }
+            }
+            binding.deviceListContainer.addView(button)
+        }
+    }
+
+    private fun selectDevice(device: ConnectedDevice) {
+        selectedDeviceId = device.deviceId
+        renderSelectedDevice()
+        renderDeviceList()
+        hideError()
+        rtcManager.start(AppRole.MONITOR)
+        signalingClient?.selectCamera(device.deviceId)
+        showStatus("Viewer meminta live feed dari ${device.deviceLabel}.")
+    }
+
+    private fun copyTokenToClipboard() {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("LegacyCamToken", activeToken))
+        showStatus("Token viewer disalin. Gunakan token ini pada device cam.")
+        hideError()
     }
 
     private fun showStatus(message: String) {

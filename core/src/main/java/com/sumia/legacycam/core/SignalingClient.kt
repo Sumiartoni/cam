@@ -12,16 +12,20 @@ class SignalingClient(
     private val serverUrl: String,
     private val token: String,
     private val role: AppRole,
+    private val deviceId: String? = null,
+    private val deviceLabel: String? = null,
     private val listener: Listener,
 ) {
     interface Listener {
         fun onSocketOpen()
-        fun onRegistered()
-        fun onPeerReady()
+        fun onRegistered(deviceId: String?)
+        fun onPeerReady(deviceId: String?)
+        fun onDeviceList(devices: List<ConnectedDevice>, selectedDeviceId: String?)
+        fun onSwitchCamera()
         fun onOffer(sdp: String)
         fun onAnswer(sdp: String)
         fun onIceCandidate(candidate: String, sdpMid: String?, sdpMLineIndex: Int)
-        fun onPeerLeft()
+        fun onPeerLeft(deviceId: String?)
         fun onClosed(reason: String)
         fun onError(message: String)
     }
@@ -52,6 +56,8 @@ class SignalingClient(
                             type = "register",
                             token = token,
                             role = role.name.lowercase(),
+                            deviceId = deviceId,
+                            deviceLabel = deviceLabel,
                         ),
                     )
                 }
@@ -97,6 +103,20 @@ class SignalingClient(
         )
     }
 
+    fun selectCamera(targetDeviceId: String) {
+        send(
+            SignalingMessage(
+                type = "select-camera",
+                token = token,
+                targetDeviceId = targetDeviceId,
+            ),
+        )
+    }
+
+    fun sendSwitchCamera() {
+        send(SignalingMessage(type = "switch-camera", token = token))
+    }
+
     private fun handleIncoming(payload: String) {
         val message = runCatching { json.decodeFromString<SignalingMessage>(payload) }
             .getOrElse {
@@ -105,8 +125,10 @@ class SignalingClient(
             }
 
         when (message.type) {
-            "registered" -> listener.onRegistered()
-            "peer-ready" -> listener.onPeerReady()
+            "registered" -> listener.onRegistered(message.deviceId)
+            "peer-ready" -> listener.onPeerReady(message.deviceId)
+            "device-list" -> listener.onDeviceList(message.devices, message.targetDeviceId)
+            "switch-camera" -> listener.onSwitchCamera()
             "offer" -> listener.onOffer(message.sdp.orEmpty())
             "answer" -> listener.onAnswer(message.sdp.orEmpty())
             "ice" -> {
@@ -116,7 +138,7 @@ class SignalingClient(
                     listener.onIceCandidate(candidate, message.sdpMid, index)
                 }
             }
-            "peer-left" -> listener.onPeerLeft()
+            "peer-left" -> listener.onPeerLeft(message.deviceId)
             "error" -> listener.onError(message.reason ?: "Terjadi error signaling.")
             else -> listener.onError("Pesan signaling tidak dikenali: ${message.type}")
         }

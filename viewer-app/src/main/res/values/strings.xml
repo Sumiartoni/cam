@@ -2,13 +2,17 @@
     <string name="app_name">LegacyCam Viewer</string>
     <string name="viewer_badge">CONTROL ROOM</string>
     <string name="viewer_title">Device Viewer</string>
-    <string name="viewer_subtitle">Aplikasi khusus monitor untuk membuat token, menunggu device camera, dan menampilkan live CCTV.</string>
-    <string name="token_panel_title">Token pairing aktif</string>
-    <string name="generate_token">Generate Token Viewer</string>
+    <string name="viewer_subtitle">Aplikasi monitor untuk menyimpan token seumur hidup, melihat daftar device cam, dan menampilkan live feed terpilih.</string>
+    <string name="token_panel_title">Token pairing tersimpan</string>
+    <string name="generate_token">Salin Token</string>
     <string name="server_url_hint">URL signaling server</string>
     <string name="default_server_url">wss://cam.zienix.me/ws</string>
     <string name="start_viewer">Aktifkan Viewer</string>
     <string name="stop_viewer">Matikan Viewer</string>
+    <string name="device_list_label">Daftar Device Cam</string>
+    <string name="no_device_connected">Belum ada device cam yang tersambung.</string>
+    <string name="no_device_selected">Belum ada device yang dipilih.</string>
+    <string name="switch_camera">Pindah Kamera Depan/Belakang</string>
     <string name="live_feed_label">Live CCTV Feed</string>
     <string name="status_title">Viewer Status</string>
 </resources>
