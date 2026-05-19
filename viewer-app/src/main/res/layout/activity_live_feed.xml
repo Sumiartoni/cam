@@ -1,36 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#05070B">
-
-    <org.webrtc.SurfaceViewRenderer
-        android:id="@+id/remoteView"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#05070B" />
+    android:background="@color/viewer_background"
+    android:orientation="vertical"
+    android:padding="16dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:background="#80050A12"
         android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="14dp"
-        android:paddingTop="18dp"
-        android:paddingBottom="14dp">
+        android:orientation="horizontal">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/backButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:minWidth="0dp"
-            android:text="@string/back_label"
-            app:backgroundTint="#26FFFFFF"
-            app:strokeColor="#33FFFFFF" />
+            android:text="@string/back_label" />
 
         <TextView
             android:id="@+id/deviceNameValue"
@@ -40,44 +27,46 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="@android:color/white"
-            android:textSize="17sp"
+            android:textColor="@color/viewer_text_primary"
+            android:textSize="18sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <LinearLayout
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1"
+        android:background="#05070B">
+
+        <org.webrtc.SurfaceViewRenderer
+            android:id="@+id/remoteView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#05070B" />
+    </FrameLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/switchCameraButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="#99050A12"
-        android:orientation="vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="14dp"
-        android:paddingBottom="18dp">
+        android:layout_marginTop="16dp"
+        android:text="@string/switch_camera" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/switchCameraButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/switch_camera"
-            app:backgroundTint="#1E88E5"
-            app:cornerRadius="18dp" />
+    <TextView
+        android:id="@+id/statusValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textColor="@color/viewer_text_primary"
+        android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/statusValue"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:textColor="#E5F0FF"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/errorValue"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textColor="#FF8A80"
-            android:textSize="13sp"
-            android:visibility="gone" />
-    </LinearLayout>
-</FrameLayout>
+    <TextView
+        android:id="@+id/errorValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="@color/viewer_error"
+        android:textSize="14sp"
+        android:visibility="gone" />
+</LinearLayout>

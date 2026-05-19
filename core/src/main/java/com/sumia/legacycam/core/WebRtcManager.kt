@@ -274,9 +274,14 @@ class WebRtcManager(
 
                 override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
 
-                override fun onAddStream(stream: org.webrtc.MediaStream) = Unit
+                override fun onAddStream(stream: org.webrtc.MediaStream) {
+                    bindRemoteTrack(stream.videoTracks.firstOrNull())
+                }
 
-                override fun onRemoveStream(stream: org.webrtc.MediaStream) = Unit
+                override fun onRemoveStream(stream: org.webrtc.MediaStream) {
+                    remoteRenderer?.let { renderer -> remoteVideoTrack?.removeSink(renderer) }
+                    remoteVideoTrack = null
+                }
 
                 override fun onDataChannel(dataChannel: org.webrtc.DataChannel) = Unit
 
