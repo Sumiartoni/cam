@@ -1,0 +1,16 @@
+[Unit]
+Description=LegacyCam WebRTC Signaling Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/legacycam-webrtc/signaling-server
+Environment=NODE_ENV=production
+Environment=PORT=8080
+ExecStart=/usr/bin/node /opt/legacycam-webrtc/signaling-server/server.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

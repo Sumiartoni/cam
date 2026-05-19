@@ -1,0 +1,9 @@
+.gradle/
+.kotlin/
+.idea/
+*.iml
+local.properties
+**/build/
+signaling-server/node_modules/
+keystore.properties
+keystore/

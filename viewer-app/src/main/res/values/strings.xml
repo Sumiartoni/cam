@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">LegacyCam Viewer</string>
+    <string name="viewer_badge">CONTROL ROOM</string>
+    <string name="viewer_title">Device Viewer</string>
+    <string name="viewer_subtitle">Aplikasi khusus monitor untuk membuat token, menunggu device camera, dan menampilkan live CCTV.</string>
+    <string name="token_panel_title">Token pairing aktif</string>
+    <string name="generate_token">Generate Token Viewer</string>
+    <string name="server_url_hint">URL signaling server</string>
+    <string name="default_server_url">ws://YOUR_SERVER_IP:8081/ws</string>
+    <string name="start_viewer">Aktifkan Viewer</string>
+    <string name="stop_viewer">Matikan Viewer</string>
+    <string name="live_feed_label">Live CCTV Feed</string>
+    <string name="status_title">Viewer Status</string>
+</resources>

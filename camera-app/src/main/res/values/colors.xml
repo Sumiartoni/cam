@@ -1,0 +1,10 @@
+<resources>
+    <color name="camera_background">#0B1020</color>
+    <color name="camera_card">#121A2B</color>
+    <color name="camera_stroke">#2A3347</color>
+    <color name="camera_input_background">#111827</color>
+    <color name="camera_accent">#F97316</color>
+    <color name="camera_text_soft">#D4D7DE</color>
+    <color name="camera_error">#FCA5A5</color>
+    <color name="camera_icon_background">#081A44</color>
+</resources>

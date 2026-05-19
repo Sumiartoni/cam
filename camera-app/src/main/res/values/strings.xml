@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">LegacyCam Camera</string>
+    <string name="camera_title">Device Cam</string>
+    <string name="camera_subtitle">Aplikasi khusus kamera untuk HP lama. Masukkan token dari viewer lalu biarkan foreground service menjaga stream tetap hidup.</string>
+    <string name="service_on">SERVICE ON</string>
+    <string name="service_off">SERVICE OFF</string>
+    <string name="current_token_title">Token aktif di foreground service</string>
+    <string name="no_token_yet">BELUM ADA TOKEN</string>
+    <string name="server_url_hint">URL signaling server</string>
+    <string name="default_server_url">ws://YOUR_SERVER_IP:8081/ws</string>
+    <string name="token_hint">Token dari viewer</string>
+    <string name="start_camera">Nyalakan Cam</string>
+    <string name="restart_camera">Restart Cam</string>
+    <string name="stop_camera">Matikan Cam</string>
+    <string name="status_title">Camera Status</string>
+</resources>

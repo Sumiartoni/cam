@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">LegacyCam CCTV</string>
+    <string name="header_title">LegacyCam CCTV</string>
+    <string name="header_subtitle">Ubah HP lama menjadi kamera pemantau berbasis WebRTC, lalu aksesnya hanya dengan token pairing yang dibuat di HP monitor.</string>
+    <string name="role_title">Pilih peran perangkat</string>
+    <string name="role_subtitle">Satu HP menjadi monitor, satu HP lain menjadi kamera. Token pairing hanya dibuat dari sisi monitor.</string>
+    <string name="open_monitor_mode">Mode Monitor</string>
+    <string name="open_camera_mode">Mode Kamera</string>
+    <string name="monitor_title">HP Pemantau</string>
+    <string name="monitor_desc">Buat token pairing, hidupkan signaling, lalu tunggu HP kamera masuk dengan token tersebut.</string>
+    <string name="camera_title">HP Kamera</string>
+    <string name="camera_desc">Masukkan token dari HP monitor, hidupkan kamera belakang, lalu kirim stream video ke monitor.</string>
+    <string name="server_url_label">URL signaling WebSocket</string>
+    <string name="default_server_url">ws://YOUR_SERVER_IP:8080/ws</string>
+    <string name="current_token_label">Token pairing aktif</string>
+    <string name="regenerate_token">Generate token baru</string>
+    <string name="start_monitor">Aktifkan monitor</string>
+    <string name="start_camera">Aktifkan kamera</string>
+    <string name="camera_running">Kamera sedang aktif</string>
+    <string name="disconnect">Putuskan sesi</string>
+    <string name="back_to_home">Kembali</string>
+    <string name="token_input_label">Masukkan token dari monitor</string>
+    <string name="status_title">Status</string>
+</resources>

@@ -1,0 +1,12 @@
+<resources>
+    <color name="surface">#F4F7FB</color>
+    <color name="card_background">#FFFFFFFF</color>
+    <color name="card_stroke">#D7E0EA</color>
+    <color name="token_background">#EEF6FF</color>
+    <color name="video_surface">#0F172A</color>
+    <color name="text_primary">#0B1F33</color>
+    <color name="text_secondary">#4B647E</color>
+    <color name="brand">#155EEF</color>
+    <color name="brand_dark">#0043CE</color>
+    <color name="error">#C1121F</color>
+</resources>

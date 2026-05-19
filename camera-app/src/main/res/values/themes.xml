@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.LegacyCamCamera" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#F97316</item>
+        <item name="colorOnPrimary">#111827</item>
+        <item name="colorSurface">#0B1020</item>
+        <item name="android:statusBarColor">#0B1020</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

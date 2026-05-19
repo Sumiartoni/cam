@@ -1,0 +1,8 @@
+<resources>
+    <color name="viewer_background">#F3F7FD</color>
+    <color name="viewer_stroke">#D5E2F8</color>
+    <color name="viewer_text_primary">#0F172A</color>
+    <color name="viewer_text_secondary">#4B5F7A</color>
+    <color name="viewer_token">#0B57D0</color>
+    <color name="viewer_error">#B42318</color>
+</resources>
