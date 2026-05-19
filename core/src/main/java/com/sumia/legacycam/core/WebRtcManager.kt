@@ -12,6 +12,7 @@ import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpReceiver
+import org.webrtc.RtpSender
 import org.webrtc.RtpTransceiver
 import org.webrtc.RendererCommon
 import org.webrtc.SessionDescription
@@ -109,6 +110,7 @@ class WebRtcManager(
 
         endSession()
         ensurePeerConnection()
+        ensureMonitorVideoReceiver()
     }
 
     fun hasHealthyLocalCapture(): Boolean {
@@ -120,6 +122,8 @@ class WebRtcManager(
         ensurePeerConnection()
         if (role == AppRole.CAMERA) {
             attachExistingLocalTrack()
+        } else {
+            ensureMonitorVideoReceiver()
         }
     }
 
@@ -298,6 +302,7 @@ class WebRtcManager(
 
     private fun closePeerConnection() {
         remoteVideoTrack?.setEnabled(false)
+        remoteRenderer?.let { renderer -> remoteVideoTrack?.removeSink(renderer) }
         remoteVideoTrack = null
         peerConnection?.close()
         peerConnection = null
@@ -322,7 +327,7 @@ class WebRtcManager(
         videoTrack.setEnabled(true)
         localRenderer?.let(videoTrack::addSink)
 
-        peerConnection?.addTrack(videoTrack, listOf("legacycam_stream"))
+        ensureCameraVideoSender(videoTrack)
 
         videoCapturer = capturer
         surfaceTextureHelper = helper
@@ -334,7 +339,7 @@ class WebRtcManager(
         val track = localVideoTrack ?: return
         track.setEnabled(true)
         localRenderer?.let(track::addSink)
-        peerConnection?.addTrack(track, listOf("legacycam_stream"))
+        ensureCameraVideoSender(track)
     }
 
     private fun bindRemoteTrack(track: VideoTrack?) {
@@ -342,6 +347,46 @@ class WebRtcManager(
         remoteVideoTrack = videoTrack
         videoTrack.setEnabled(true)
         remoteRenderer?.let(videoTrack::addSink)
+    }
+
+    private fun ensureMonitorVideoReceiver() {
+        val connection = peerConnection ?: return
+        val existing = connection.transceivers.firstOrNull {
+            !it.isStopped && it.mediaType == org.webrtc.MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO
+        }
+
+        if (existing != null) {
+            existing.setDirection(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY)
+            return
+        }
+
+        connection.addTransceiver(
+            org.webrtc.MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO,
+            RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.RECV_ONLY),
+        )
+    }
+
+    private fun ensureCameraVideoSender(track: VideoTrack) {
+        val connection = peerConnection ?: return
+        val existing = connection.transceivers.firstOrNull {
+            !it.isStopped && it.mediaType == org.webrtc.MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO
+        }
+
+        if (existing != null) {
+            existing.setDirection(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY)
+            val sender: RtpSender = existing.sender
+            sender.setTrack(track, false)
+            sender.setStreams(listOf("legacycam_stream"))
+            return
+        }
+
+        connection.addTransceiver(
+            track,
+            RtpTransceiver.RtpTransceiverInit(
+                RtpTransceiver.RtpTransceiverDirection.SEND_ONLY,
+                listOf("legacycam_stream"),
+            ),
+        )
     }
 
     private fun createVideoCapturer(): CapturerSelection? {
