@@ -4,28 +4,83 @@ import android.content.Context
 import com.sumia.legacycam.core.AppRole
 import com.sumia.legacycam.core.SignalingClient
 import com.sumia.legacycam.core.WebRtcManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
 import org.webrtc.PeerConnection
 import org.webrtc.SessionDescription
 import org.webrtc.SurfaceViewRenderer
 
 object CameraStreamingController {
+    private data class DesiredSession(
+        val context: Context,
+        val serverUrl: String,
+        val token: String,
+        val deviceId: String,
+    )
+
     private val mutableState = MutableStateFlow(CameraServiceState())
     val state: StateFlow<CameraServiceState> = mutableState.asStateFlow()
+    private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var rtcManager: WebRtcManager? = null
     private var signalingClient: SignalingClient? = null
     private var currentSessionId: Long = 0
     private var currentDeviceId: String = ""
+    private var desiredSession: DesiredSession? = null
+    private var reconnectJob: Job? = null
+    private var manualStopRequested: Boolean = false
+    private var reconnectAttempt: Int = 0
 
     fun start(context: Context, serverUrl: String, token: String, deviceId: String) {
+        manualStopRequested = false
+        reconnectAttempt = 0
+        desiredSession = DesiredSession(
+            context = context.applicationContext,
+            serverUrl = serverUrl,
+            token = token,
+            deviceId = deviceId,
+        )
+        cancelReconnect()
+        startDesiredSession(initialStatus = "Foreground service camera memulai sesi token $token.")
+    }
+
+    fun stop(reason: String = "Device cam dihentikan.") {
+        manualStopRequested = true
+        desiredSession = null
+        reconnectAttempt = 0
+        cancelReconnect()
+        currentSessionId += 1
+        currentDeviceId = ""
+        signalingClient?.disconnect()
+        signalingClient = null
+        rtcManager?.release()
+        rtcManager = null
+        mutableState.value = CameraServiceState(status = reason)
+    }
+
+    fun attachPreviewRenderer(renderer: SurfaceViewRenderer) {
+        rtcManager?.attachLocalRenderer(renderer)
+    }
+
+    fun detachPreviewRenderer(renderer: SurfaceViewRenderer) {
+        rtcManager?.detachLocalRenderer(renderer)
+    }
+
+    private fun startDesiredSession(initialStatus: String) {
+        val session = desiredSession ?: return
+
         currentSessionId += 1
         val sessionId = currentSessionId
-        currentDeviceId = deviceId
+        currentDeviceId = session.deviceId
 
         signalingClient?.disconnect()
         signalingClient = null
@@ -33,7 +88,7 @@ object CameraStreamingController {
         rtcManager = null
 
         val manager = WebRtcManager(
-            context.applicationContext,
+            session.context,
             object : WebRtcManager.Listener {
                 override fun onLocalDescription(sessionDescription: SessionDescription) {
                     if (!isCurrentSession(sessionId)) return
@@ -72,19 +127,20 @@ object CameraStreamingController {
         manager.start(AppRole.CAMERA)
 
         signalingClient = SignalingClient(
-            serverUrl = serverUrl,
-            token = token,
+            serverUrl = session.serverUrl,
+            token = session.token,
             role = AppRole.CAMERA,
-            deviceId = deviceId,
-            deviceLabel = "Device $deviceId",
+            deviceId = session.deviceId,
+            deviceLabel = "Device ${session.deviceId}",
             listener = object : SignalingClient.Listener {
                 override fun onSocketOpen() {
                     if (!isCurrentSession(sessionId)) return
+                    reconnectAttempt = 0
                     updateState {
                         copy(
                             isRunning = true,
-                            token = token,
-                            serverUrl = serverUrl,
+                            token = session.token,
+                            serverUrl = session.serverUrl,
                             errorMessage = null,
                             status = "Device cam aktif. Koneksi signaling terbuka.",
                         )
@@ -96,9 +152,9 @@ object CameraStreamingController {
                     updateState {
                         copy(
                             isRunning = true,
-                            token = token,
-                            serverUrl = serverUrl,
-                            status = "Device cam standby di token $token.",
+                            token = session.token,
+                            serverUrl = session.serverUrl,
+                            status = "Device cam standby di token ${session.token}.",
                         )
                     }
                 }
@@ -108,8 +164,8 @@ object CameraStreamingController {
                     updateState {
                         copy(
                             isRunning = true,
-                            token = token,
-                            serverUrl = serverUrl,
+                            token = session.token,
+                            serverUrl = session.serverUrl,
                             status = "Viewer ditemukan. Camera membuat offer video.",
                         )
                     }
@@ -155,12 +211,20 @@ object CameraStreamingController {
 
                 override fun onClosed(reason: String) {
                     if (!isCurrentSession(sessionId)) return
-                    updateState { copy(isRunning = false, status = "Koneksi signaling camera ditutup: $reason") }
+                    scheduleReconnect(reason, sessionId)
                 }
 
                 override fun onError(message: String) {
                     if (!isCurrentSession(sessionId)) return
-                    updateState { copy(isRunning = true, errorMessage = message, status = "Foreground service camera bermasalah.") }
+                    updateState {
+                        copy(
+                            isRunning = true,
+                            token = session.token,
+                            serverUrl = session.serverUrl,
+                            errorMessage = message,
+                            status = "Foreground service camera tetap berjalan, tetapi ada error signaling.",
+                        )
+                    }
                 }
             },
         ).also { it.connect() }
@@ -168,34 +232,48 @@ object CameraStreamingController {
         updateState {
             copy(
                 isRunning = true,
-                token = token,
-                serverUrl = serverUrl,
+                token = session.token,
+                serverUrl = session.serverUrl,
                 errorMessage = null,
-                status = "Foreground service camera memulai sesi token $token.",
+                status = initialStatus,
             )
         }
     }
 
-    fun stop(reason: String = "Device cam dihentikan.") {
-        currentSessionId += 1
-        currentDeviceId = ""
-        signalingClient?.disconnect()
-        signalingClient = null
-        rtcManager?.release()
-        rtcManager = null
-        mutableState.value = CameraServiceState(status = reason)
-    }
-
-    fun attachPreviewRenderer(renderer: SurfaceViewRenderer) {
-        rtcManager?.attachLocalRenderer(renderer)
-    }
-
-    fun detachPreviewRenderer(renderer: SurfaceViewRenderer) {
-        rtcManager?.detachLocalRenderer(renderer)
-    }
-
     private fun updateState(transform: CameraServiceState.() -> CameraServiceState) {
         mutableState.update(transform)
+    }
+
+    private fun scheduleReconnect(reason: String, sessionId: Long) {
+        if (manualStopRequested || !isCurrentSession(sessionId) || desiredSession == null) {
+            return
+        }
+
+        if (reconnectJob?.isActive == true) {
+            return
+        }
+
+        reconnectAttempt += 1
+        val delayMs = (1500L * reconnectAttempt).coerceAtMost(8000L)
+        updateState {
+            copy(
+                isRunning = true,
+                errorMessage = null,
+                status = "Koneksi camera ke server terputus. ant Vrs mencoba lagi dalam ${delayMs / 1000} detik.",
+            )
+        }
+
+        reconnectJob = controllerScope.launch {
+            delay(delayMs)
+            if (!manualStopRequested && isCurrentSession(sessionId) && desiredSession != null) {
+                startDesiredSession(initialStatus = "ant Vrs menghubungkan ulang camera ke server.")
+            }
+        }
+    }
+
+    private fun cancelReconnect() {
+        reconnectJob?.cancel()
+        reconnectJob = null
     }
 
     private fun isCurrentSession(sessionId: Long): Boolean = currentSessionId == sessionId

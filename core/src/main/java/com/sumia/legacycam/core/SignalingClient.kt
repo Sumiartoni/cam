@@ -37,6 +37,7 @@ class SignalingClient(
 
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .pingInterval(20, TimeUnit.SECONDS)
         .build()
 
     private var socket: WebSocket? = null
@@ -66,12 +67,12 @@ class SignalingClient(
                     handleIncoming(text)
                 }
 
-                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     listener.onClosed(reason.ifBlank { "Koneksi ditutup." })
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    listener.onError(t.message ?: "Koneksi signaling gagal.")
+                    listener.onClosed(t.message ?: "Koneksi signaling gagal.")
                 }
             },
         )

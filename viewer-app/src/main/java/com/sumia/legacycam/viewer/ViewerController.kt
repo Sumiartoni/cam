@@ -5,24 +5,41 @@ import com.sumia.legacycam.core.AppRole
 import com.sumia.legacycam.core.ConnectedDevice
 import com.sumia.legacycam.core.SignalingClient
 import com.sumia.legacycam.core.WebRtcManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
 import org.webrtc.PeerConnection
 import org.webrtc.SessionDescription
 import org.webrtc.SurfaceViewRenderer
 
 object ViewerController {
+    private data class DesiredSession(
+        val context: Context,
+        val serverUrl: String,
+        val token: String,
+    )
+
     private val mutableState = MutableStateFlow(ViewerState())
     val state: StateFlow<ViewerState> = mutableState.asStateFlow()
+    private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var rtcManager: WebRtcManager? = null
     private var signalingClient: SignalingClient? = null
     private var currentSessionId: Long = 0
     private var startedToken: String = ""
     private var startedServerUrl: String = ""
+    private var desiredSession: DesiredSession? = null
+    private var reconnectJob: Job? = null
+    private var manualStopRequested: Boolean = false
+    private var reconnectAttempt: Int = 0
 
     fun ensureStarted(context: Context, serverUrl: String, token: String, forceRestart: Boolean = false) {
         if (serverUrl.isBlank() || token.isBlank()) {
@@ -34,18 +51,70 @@ object ViewerController {
             return
         }
 
-        currentSessionId += 1
-        val sessionId = currentSessionId
         startedToken = token
         startedServerUrl = serverUrl
+        manualStopRequested = false
+        if (forceRestart) {
+            reconnectAttempt = 0
+        }
+        desiredSession = DesiredSession(
+            context = context.applicationContext,
+            serverUrl = serverUrl,
+            token = token,
+        )
+        cancelReconnect()
+        startDesiredSession(
+            initialStatus = if (forceRestart) "Viewer memuat ulang koneksi."
+            else "Viewer memulihkan sesi token tersimpan.",
+        )
+    }
 
+    fun reload(context: Context, serverUrl: String, token: String) {
+        ensureStarted(
+            context = context,
+            serverUrl = serverUrl,
+            token = token,
+            forceRestart = true,
+        )
+    }
+
+    fun selectDevice(deviceId: String) {
+        rtcManager?.endSession()
+        rtcManager?.start(AppRole.MONITOR)
+        signalingClient?.selectCamera(deviceId)
+        updateState { copy(selectedDeviceId = deviceId, status = "Viewer meminta live feed dari device cam terpilih.", errorMessage = null) }
+    }
+
+    fun switchCamera() {
+        signalingClient?.sendSwitchCamera()
+        updateState { copy(status = "Viewer mengirim perintah pindah kamera ke device cam terpilih.", errorMessage = null) }
+    }
+
+    fun attachRemoteRenderer(renderer: SurfaceViewRenderer) {
+        rtcManager?.attachRemoteRenderer(renderer)
+    }
+
+    fun detachRemoteRenderer(renderer: SurfaceViewRenderer) {
+        rtcManager?.detachRemoteRenderer(renderer)
+    }
+
+    fun getSelectedDevice(): ConnectedDevice? {
+        val selectedId = state.value.selectedDeviceId ?: return null
+        return state.value.devices.firstOrNull { it.deviceId == selectedId }
+    }
+
+    private fun startDesiredSession(initialStatus: String) {
+        val session = desiredSession ?: return
+
+        currentSessionId += 1
+        val sessionId = currentSessionId
         signalingClient?.disconnect()
         signalingClient = null
         rtcManager?.release()
         rtcManager = null
 
         val manager = WebRtcManager(
-            context.applicationContext,
+            session.context,
             object : WebRtcManager.Listener {
                 override fun onLocalDescription(sessionDescription: SessionDescription) {
                     if (!isCurrentSession(sessionId)) return
@@ -84,17 +153,18 @@ object ViewerController {
         manager.start(AppRole.MONITOR)
 
         signalingClient = SignalingClient(
-            serverUrl = serverUrl,
-            token = token,
+            serverUrl = session.serverUrl,
+            token = session.token,
             role = AppRole.MONITOR,
             listener = object : SignalingClient.Listener {
                 override fun onSocketOpen() {
                     if (!isCurrentSession(sessionId)) return
+                    reconnectAttempt = 0
                     updateState {
                         copy(
                             isRunning = true,
-                            token = token,
-                            serverUrl = serverUrl,
+                            token = session.token,
+                            serverUrl = session.serverUrl,
                             errorMessage = null,
                             status = "Viewer terhubung ke signaling server.",
                         )
@@ -106,9 +176,9 @@ object ViewerController {
                     updateState {
                         copy(
                             isRunning = true,
-                            token = token,
-                            serverUrl = serverUrl,
-                            status = "Viewer standby pada token $token.",
+                            token = session.token,
+                            serverUrl = session.serverUrl,
+                            status = "Viewer standby pada token ${session.token}.",
                         )
                     }
                 }
@@ -185,7 +255,7 @@ object ViewerController {
 
                 override fun onClosed(reason: String) {
                     if (!isCurrentSession(sessionId)) return
-                    updateState { copy(isRunning = false, status = "Koneksi viewer ditutup: $reason") }
+                    scheduleReconnect(reason, sessionId)
                 }
 
                 override fun onError(message: String) {
@@ -198,51 +268,48 @@ object ViewerController {
         updateState {
             copy(
                 isRunning = true,
-                token = token,
-                serverUrl = serverUrl,
+                token = session.token,
+                serverUrl = session.serverUrl,
                 errorMessage = null,
-                status = if (forceRestart) "Viewer memuat ulang koneksi."
-                else "Viewer memulihkan sesi token tersimpan.",
+                status = initialStatus,
             )
         }
     }
 
-    fun reload(context: Context, serverUrl: String, token: String) {
-        ensureStarted(
-            context = context,
-            serverUrl = serverUrl,
-            token = token,
-            forceRestart = true,
-        )
-    }
-
-    fun selectDevice(deviceId: String) {
-        rtcManager?.endSession()
-        rtcManager?.start(AppRole.MONITOR)
-        signalingClient?.selectCamera(deviceId)
-        updateState { copy(selectedDeviceId = deviceId, status = "Viewer meminta live feed dari device cam terpilih.", errorMessage = null) }
-    }
-
-    fun switchCamera() {
-        signalingClient?.sendSwitchCamera()
-        updateState { copy(status = "Viewer mengirim perintah pindah kamera ke device cam terpilih.", errorMessage = null) }
-    }
-
-    fun attachRemoteRenderer(renderer: SurfaceViewRenderer) {
-        rtcManager?.attachRemoteRenderer(renderer)
-    }
-
-    fun detachRemoteRenderer(renderer: SurfaceViewRenderer) {
-        rtcManager?.detachRemoteRenderer(renderer)
-    }
-
-    fun getSelectedDevice(): ConnectedDevice? {
-        val selectedId = state.value.selectedDeviceId ?: return null
-        return state.value.devices.firstOrNull { it.deviceId == selectedId }
-    }
-
     private fun updateState(transform: ViewerState.() -> ViewerState) {
         mutableState.update(transform)
+    }
+
+    private fun scheduleReconnect(reason: String, sessionId: Long) {
+        if (manualStopRequested || !isCurrentSession(sessionId) || desiredSession == null) {
+            return
+        }
+
+        if (reconnectJob?.isActive == true) {
+            return
+        }
+
+        reconnectAttempt += 1
+        val delayMs = (1500L * reconnectAttempt).coerceAtMost(8000L)
+        updateState {
+            copy(
+                isRunning = true,
+                errorMessage = null,
+                status = "Viewer terputus dari server. Sistem mencoba lagi dalam ${delayMs / 1000} detik.",
+            )
+        }
+
+        reconnectJob = controllerScope.launch {
+            delay(delayMs)
+            if (!manualStopRequested && isCurrentSession(sessionId) && desiredSession != null) {
+                startDesiredSession(initialStatus = "Viewer menghubungkan ulang ke server.")
+            }
+        }
+    }
+
+    private fun cancelReconnect() {
+        reconnectJob?.cancel()
+        reconnectJob = null
     }
 
     private fun isCurrentSession(sessionId: Long): Boolean = currentSessionId == sessionId
