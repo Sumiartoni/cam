@@ -135,7 +135,8 @@ class CameraForegroundService : Service() {
             CameraStreamingController.state.collectLatest { state ->
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 manager.notify(NOTIFICATION_ID, buildNotification(state))
-                if (!state.isRunning && state.token.isBlank()) {
+                val hasActiveSession = CameraSessionStore.loadActive(this@CameraForegroundService) != null
+                if (!state.isRunning && state.token.isBlank() && !hasActiveSession && serviceStopping) {
                     stopSelf()
                 }
             }
@@ -208,7 +209,6 @@ class CameraForegroundService : Service() {
         CameraSessionStore.saveBinding(this, serverUrl, token)
         CameraSessionStore.markActive(this, true)
         startServiceInForeground()
-        ensureNotificationUpdates()
         acquireWakeLock()
         acquireWifiLock()
         CameraStreamingController.start(
@@ -217,6 +217,7 @@ class CameraForegroundService : Service() {
             token = token,
             deviceId = CameraSessionStore.getOrCreateDeviceId(this),
         )
+        ensureNotificationUpdates()
     }
 
     private fun restoreSavedSession(): Boolean {
