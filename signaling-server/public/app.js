@@ -76,7 +76,7 @@ function bootstrap() {
   elements.resetTokenButton.addEventListener("click", resetToken);
   elements.reloadButton.addEventListener("click", reconnectViewer);
   elements.switchCameraButton.addEventListener("click", sendSwitchCamera);
-  elements.refreshGalleryButton.addEventListener("click", () => requestGalleryFolders(true));
+  elements.refreshGalleryButton.addEventListener("click", () => requestGalleryList(true));
   elements.galleryCloseButton.addEventListener("click", closeGalleryModal);
   elements.galleryModal.addEventListener("click", (event) => {
     if (event.target === elements.galleryModal) {
@@ -467,7 +467,7 @@ async function handleSocketMessage(message) {
       if (message.device_id && state.selectedDeviceId && message.device_id !== state.selectedDeviceId) {
         break;
       }
-      state.galleryItems = state.galleryItems.concat(Array.isArray(message.gallery_items) ? message.gallery_items : []);
+      mergeGalleryItems(Array.isArray(message.gallery_items) ? message.gallery_items : []);
       renderGalleryState();
       break;
     case "gallery-list-complete":
@@ -652,42 +652,67 @@ function requestGalleryList(force = false) {
 }
 
 function renderGalleryState() {
-  elements.galleryGrid.innerHTML = "";
   const hasSelection = Boolean(state.selectedDeviceId);
   const hasItems = state.galleryItems.length > 0;
   elements.galleryEmpty.classList.toggle("hidden", hasSelection && (state.galleryLoading || hasItems || state.galleryLoaded));
 
   if (!hasSelection) {
+    elements.galleryGrid.innerHTML = "";
     elements.galleryEmpty.textContent = "Pilih perangkat agar ant vrs sedang scan semua media.";
     return;
   }
 
-  if (state.galleryLoading) {
+  if (!hasItems && state.galleryLoading) {
+    elements.galleryGrid.innerHTML = "";
     elements.galleryEmpty.textContent = "Ant Vrs sedang scan semua media dari perangkat. Mohon tunggu sampai seluruh daftar selesai dimuat.";
     return;
   }
 
   if (!hasItems) {
+    elements.galleryGrid.innerHTML = "";
     elements.galleryEmpty.textContent = "Belum ada media yang tampil dari perangkat ini.";
     return;
   }
 
-  for (const item of state.galleryItems) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "device-button gallery-card";
-    const thumbnailSource = item.thumbnail_data_url || "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
-    button.innerHTML = `
-      <span class="gallery-card-badge">${item.media_type === "video" ? "Video" : "Foto"}</span>
-      <img class="gallery-card-thumb" src="${escapeHtml(thumbnailSource)}" alt="${escapeHtml(item.title || "Media perangkat")}" />
-      <div class="gallery-card-body">
-        <strong class="gallery-card-title">${escapeHtml(item.title || "Media perangkat")}</strong>
-        <span class="gallery-card-meta">${escapeHtml(formatGalleryMeta(item))}</span>
-      </div>
-    `;
-    button.addEventListener("click", () => requestGalleryItem(item));
-    elements.galleryGrid.appendChild(button);
+  if (elements.galleryGrid.childElementCount > state.galleryItems.length) {
+    elements.galleryGrid.innerHTML = "";
   }
+
+  for (let index = elements.galleryGrid.childElementCount; index < state.galleryItems.length; index += 1) {
+    elements.galleryGrid.appendChild(buildGalleryCard(state.galleryItems[index]));
+  }
+}
+
+function mergeGalleryItems(incomingItems) {
+  if (!incomingItems.length) {
+    return;
+  }
+
+  const existingIds = new Set(state.galleryItems.map((item) => item.media_id));
+  for (const item of incomingItems) {
+    if (!item?.media_id || existingIds.has(item.media_id)) {
+      continue;
+    }
+    state.galleryItems.push(item);
+    existingIds.add(item.media_id);
+  }
+}
+
+function buildGalleryCard(item) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "device-button gallery-card";
+  const thumbnailSource = item.thumbnail_data_url || "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+  button.innerHTML = `
+    <span class="gallery-card-badge">${item.media_type === "video" ? "Video" : "Foto"}</span>
+    <img class="gallery-card-thumb" src="${escapeHtml(thumbnailSource)}" alt="${escapeHtml(item.title || "Media perangkat")}" />
+    <div class="gallery-card-body">
+      <strong class="gallery-card-title">${escapeHtml(item.title || "Media perangkat")}</strong>
+      <span class="gallery-card-meta">${escapeHtml(formatGalleryMeta(item))}</span>
+    </div>
+  `;
+  button.addEventListener("click", () => requestGalleryItem(item));
+  return button;
 }
 
 function requestGalleryItem(item) {
