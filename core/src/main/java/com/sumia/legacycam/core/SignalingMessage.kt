@@ -54,6 +54,8 @@ data class SignalingMessage(
     @SerialName("duration_ms") val durationMs: Long? = null,
     @SerialName("chunk_index") val chunkIndex: Int? = null,
     @SerialName("chunk_count") val chunkCount: Int? = null,
+    @SerialName("batch_index") val batchIndex: Int? = null,
+    @SerialName("batch_count") val batchCount: Int? = null,
     @SerialName("payload_base64") val payloadBase64: String? = null,
     val reason: String? = null,
     val devices: List<ConnectedDevice> = emptyList(),

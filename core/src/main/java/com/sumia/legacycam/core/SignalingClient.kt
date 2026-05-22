@@ -28,9 +28,8 @@ class SignalingClient(
         fun onPeerReady(deviceId: String?)
         fun onDeviceList(devices: List<ConnectedDevice>, selectedDeviceId: String?)
         fun onGalleryListRequest() = Unit
-        fun onGalleryFolders(deviceId: String?, folders: List<GalleryFolderPayload>) = Unit
-        fun onGalleryList(deviceId: String?, items: List<GalleryItemPayload>) = Unit
-        fun onGalleryFolderRequest(folderName: String) = Unit
+        fun onGalleryList(deviceId: String?, items: List<GalleryItemPayload>, batchIndex: Int, batchCount: Int) = Unit
+        fun onGalleryListComplete(deviceId: String?) = Unit
         fun onGalleryItemRequest(requestId: String, mediaId: String) = Unit
         fun onGalleryItemMeta(requestId: String, deviceId: String?, item: GalleryItemPayload, chunkCount: Int) = Unit
         fun onGalleryItemChunk(requestId: String, chunkIndex: Int, chunkCount: Int, payloadBase64: String) = Unit
@@ -141,34 +140,25 @@ class SignalingClient(
         send(SignalingMessage(type = "gallery-list-request", token = token))
     }
 
-    fun sendGalleryList(items: List<GalleryItemPayload>) {
+    fun sendGalleryList(items: List<GalleryItemPayload>, batchIndex: Int, batchCount: Int) {
         send(
             SignalingMessage(
                 type = "gallery-list",
                 token = token,
                 deviceId = deviceId,
+                batchIndex = batchIndex,
+                batchCount = batchCount,
                 galleryItems = items,
             ),
         )
     }
 
-    fun sendGalleryFolders(folders: List<GalleryFolderPayload>) {
+    fun sendGalleryListComplete() {
         send(
             SignalingMessage(
-                type = "gallery-folders",
+                type = "gallery-list-complete",
                 token = token,
                 deviceId = deviceId,
-                galleryFolders = folders,
-            ),
-        )
-    }
-
-    fun requestGalleryFolder(folderName: String) {
-        send(
-            SignalingMessage(
-                type = "gallery-folder-request",
-                token = token,
-                folderName = folderName,
             ),
         )
     }
@@ -249,14 +239,8 @@ class SignalingClient(
             "peer-ready" -> listener.onPeerReady(message.deviceId)
             "device-list" -> listener.onDeviceList(message.devices, message.targetDeviceId)
             "gallery-list-request" -> listener.onGalleryListRequest()
-            "gallery-folders" -> listener.onGalleryFolders(message.deviceId, message.galleryFolders)
-            "gallery-list" -> listener.onGalleryList(message.deviceId, message.galleryItems)
-            "gallery-folder-request" -> {
-                val folderName = message.folderName
-                if (!folderName.isNullOrBlank()) {
-                    listener.onGalleryFolderRequest(folderName)
-                }
-            }
+            "gallery-list" -> listener.onGalleryList(message.deviceId, message.galleryItems, message.batchIndex ?: 0, message.batchCount ?: 1)
+            "gallery-list-complete" -> listener.onGalleryListComplete(message.deviceId)
             "gallery-item-request" -> {
                 val requestId = message.requestId
                 val mediaId = message.mediaId

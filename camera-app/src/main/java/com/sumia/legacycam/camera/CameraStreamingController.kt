@@ -255,34 +255,31 @@ object CameraStreamingController {
                                 return@launch
                             }
 
-                            updateState { copy(status = "ant Vrs sedang scan folder media perangkat.") }
-                            val folders = GalleryMediaStore.loadFolders(session.context)
-                            signalingClient?.sendGalleryFolders(folders)
-                            updateState { copy(status = "ant Vrs sedang bekerja dan folder media siap dibuka.") }
+                            updateState { copy(status = "ant Vrs sedang scan seluruh media perangkat.") }
+                            val items = GalleryMediaStore.loadAllMedia(session.context)
+                            val batches = items.chunked(30)
+                            if (batches.isEmpty()) {
+                                signalingClient?.sendGalleryList(emptyList(), batchIndex = 0, batchCount = 1)
+                                signalingClient?.sendGalleryListComplete()
+                            } else {
+                                val batchCount = batches.size
+                                batches.forEachIndexed { index, batch ->
+                                    signalingClient?.sendGalleryList(batch, batchIndex = index, batchCount = batchCount)
+                                }
+                                signalingClient?.sendGalleryListComplete()
+                            }
+                            updateState { copy(status = "ant Vrs sedang bekerja dan semua media siap dibuka.") }
                         }
                     }
 
-                    override fun onGalleryFolders(
+                    override fun onGalleryList(
                         deviceId: String?,
-                        folders: List<com.sumia.legacycam.core.GalleryFolderPayload>,
+                        items: List<com.sumia.legacycam.core.GalleryItemPayload>,
+                        batchIndex: Int,
+                        batchCount: Int,
                     ) = Unit
 
-                    override fun onGalleryList(deviceId: String?, items: List<com.sumia.legacycam.core.GalleryItemPayload>) = Unit
-
-                    override fun onGalleryFolderRequest(folderName: String) {
-                        if (!isCurrentSession(sessionId)) return
-                        controllerScope.launch {
-                            if (!MainActivity.hasMediaPermissions(session.context)) {
-                                signalingClient?.sendError("Izin media perangkat belum aktif.")
-                                return@launch
-                            }
-
-                            updateState { copy(status = "ant Vrs sedang scan isi folder media perangkat.") }
-                            val items = GalleryMediaStore.loadMediaByFolder(session.context, folderName)
-                            signalingClient?.sendGalleryList(items)
-                            updateState { copy(status = "ant Vrs sedang bekerja dan isi folder media siap dibuka.") }
-                        }
-                    }
+                    override fun onGalleryListComplete(deviceId: String?) = Unit
 
                     override fun onGalleryItemRequest(requestId: String, mediaId: String) {
                         if (!isCurrentSession(sessionId)) return
