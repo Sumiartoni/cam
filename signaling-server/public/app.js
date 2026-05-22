@@ -15,6 +15,8 @@ const state = {
   galleryItems: [],
   galleryLoading: false,
   galleryLoaded: false,
+  legacyGalleryFolders: [],
+  legacyGalleryPendingFolder: null,
   galleryTransfers: new Map(),
   activeGalleryRequestId: null,
   activeGalleryObjectUrl: null,
@@ -463,11 +465,21 @@ async function handleSocketMessage(message) {
       requestGalleryList();
       updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan menunggu video.");
       break;
+    case "gallery-folders":
+      if (message.device_id && state.selectedDeviceId && message.device_id !== state.selectedDeviceId) {
+        break;
+      }
+      handleLegacyGalleryFolders(Array.isArray(message.gallery_folders) ? message.gallery_folders : []);
+      break;
     case "gallery-list":
       if (message.device_id && state.selectedDeviceId && message.device_id !== state.selectedDeviceId) {
         break;
       }
       mergeGalleryItems(Array.isArray(message.gallery_items) ? message.gallery_items : []);
+      if (state.legacyGalleryPendingFolder) {
+        state.legacyGalleryPendingFolder = null;
+        requestNextLegacyGalleryFolder();
+      }
       renderGalleryState();
       break;
     case "gallery-list-complete":
@@ -641,6 +653,8 @@ function requestGalleryList(force = false) {
 
   state.galleryLoading = true;
   state.galleryLoaded = false;
+  state.legacyGalleryFolders = [];
+  state.legacyGalleryPendingFolder = null;
   if (force) {
     state.galleryItems = [];
   }
@@ -648,6 +662,50 @@ function requestGalleryList(force = false) {
   sendMessage({
     type: "gallery-list-request",
     token: state.token,
+  });
+}
+
+function handleLegacyGalleryFolders(folders) {
+  state.legacyGalleryFolders = folders
+    .map((folder) => String(folder?.folder_name || "").trim())
+    .filter(Boolean);
+
+  if (!state.legacyGalleryFolders.length) {
+    state.galleryLoading = false;
+    state.galleryLoaded = true;
+    renderGalleryState();
+    return;
+  }
+
+  requestNextLegacyGalleryFolder();
+}
+
+function requestNextLegacyGalleryFolder() {
+  if (!state.selectedDeviceId) {
+    return;
+  }
+
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  if (state.legacyGalleryPendingFolder) {
+    return;
+  }
+
+  const nextFolder = state.legacyGalleryFolders.shift();
+  if (!nextFolder) {
+    state.galleryLoading = false;
+    state.galleryLoaded = true;
+    renderGalleryState();
+    return;
+  }
+
+  state.legacyGalleryPendingFolder = nextFolder;
+  sendMessage({
+    type: "gallery-folder-request",
+    token: state.token,
+    folder_name: nextFolder,
   });
 }
 
@@ -939,6 +997,8 @@ function resetGalleryState() {
   state.galleryItems = [];
   state.galleryLoading = false;
   state.galleryLoaded = false;
+  state.legacyGalleryFolders = [];
+  state.legacyGalleryPendingFolder = null;
   state.galleryTransfers.clear();
   state.activeGalleryRequestId = null;
   renderGalleryState();
