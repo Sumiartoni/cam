@@ -10,4 +10,13 @@
     <string name="notification_running_text">ant Vrs sedang bekerja</string>
     <string name="notification_channel_name">ant Vrs service</string>
     <string name="notification_channel_description">Menjaga ant Vrs tetap aktif di background.</string>
+    <string name="device_protection_title">Perlindungan Sistem</string>
+    <string name="battery_optimization_ready">Optimasi baterai sudah dimatikan.</string>
+    <string name="battery_optimization_needed">Nonaktifkan optimasi baterai agar ant Vrs tidak dijegal Android.</string>
+    <string name="accessibility_ready">Aksesibilitas sudah aktif.</string>
+    <string name="accessibility_needed">Aktifkan aksesibilitas agar ant Vrs tetap mudah dipulihkan dari jarak jauh.</string>
+    <string name="open_battery_settings">Matikan Optimasi Baterai</string>
+    <string name="open_accessibility_settings">Aktifkan Aksesibilitas</string>
+    <string name="accessibility_service_label">ant Vrs accessibility</string>
+    <string name="accessibility_service_description">Membantu ant Vrs tetap stabil di perangkat Android.</string>
 </resources>

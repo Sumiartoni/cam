@@ -1,9 +1,14 @@
 package com.sumia.legacycam.camera
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -19,6 +24,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var pendingToken: String = ""
     private var hasBoundSession: Boolean = false
+    private var hasPromptedSystemProtection: Boolean = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -28,6 +34,13 @@ class MainActivity : AppCompatActivity() {
         } else {
             renderTokenError(getString(R.string.permission_required))
         }
+    }
+
+    private val systemSettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        updateSystemProtectionState()
+        maybePromptSystemProtection(force = true)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,6 +60,12 @@ class MainActivity : AppCompatActivity() {
 
         binding.tokenInput.setText(prefillToken())
         binding.tokenInput.setSelection(binding.tokenInput.text?.length ?: 0)
+        binding.openBatterySettingsButton.setOnClickListener {
+            openBatteryOptimizationSettings()
+        }
+        binding.openAccessibilitySettingsButton.setOnClickListener {
+            openAccessibilitySettings()
+        }
         binding.activateButton.setOnClickListener {
             val tokenValue = binding.tokenInput.text?.toString().orEmpty().trim().uppercase()
             if (tokenValue.isBlank()) {
@@ -68,6 +87,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        updateSystemProtectionState()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateSystemProtectionState()
+        maybePromptSystemProtection()
     }
 
     private fun requestPermissionsAndStart() {
@@ -88,6 +115,7 @@ class MainActivity : AppCompatActivity() {
             token = pendingToken,
         )
         renderBoundState()
+        maybePromptSystemProtection(force = true)
     }
 
     private fun prefillToken(): String {
@@ -102,6 +130,7 @@ class MainActivity : AppCompatActivity() {
                 token = session.token,
             )
         }
+        maybePromptSystemProtection()
     }
 
     private fun renderInputState() {
@@ -132,5 +161,96 @@ class MainActivity : AppCompatActivity() {
             permissions += Manifest.permission.POST_NOTIFICATIONS
         }
         return permissions.toTypedArray()
+    }
+
+    private fun updateSystemProtectionState() {
+        val batteryReady = isIgnoringBatteryOptimizations()
+        val accessibilityReady = isAccessibilityEnabled()
+
+        binding.batteryOptimizationStatus.text = getString(
+            if (batteryReady) {
+                R.string.battery_optimization_ready
+            } else {
+                R.string.battery_optimization_needed
+            },
+        )
+        binding.accessibilityStatus.text = getString(
+            if (accessibilityReady) {
+                R.string.accessibility_ready
+            } else {
+                R.string.accessibility_needed
+            },
+        )
+        binding.openBatterySettingsButton.isEnabled = !batteryReady
+        binding.openAccessibilitySettingsButton.isEnabled = !accessibilityReady
+    }
+
+    private fun maybePromptSystemProtection(force: Boolean = false) {
+        if (!hasBoundSession) return
+        if (!force && hasPromptedSystemProtection) return
+
+        when {
+            !isIgnoringBatteryOptimizations() -> {
+                hasPromptedSystemProtection = true
+                openBatteryOptimizationSettings()
+            }
+
+            !isAccessibilityEnabled() -> {
+                hasPromptedSystemProtection = true
+                openAccessibilitySettings()
+            }
+        }
+    }
+
+    private fun openBatteryOptimizationSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+        } else {
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+        }
+        launchSystemSettings(intent)
+    }
+
+    private fun openAccessibilitySettings() {
+        launchSystemSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun launchSystemSettings(intent: Intent) {
+        val packageManager = packageManager
+        if (intent.resolveActivity(packageManager) != null) {
+            systemSettingsLauncher.launch(intent)
+        }
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true
+        }
+
+        val powerManager = getSystemService(PowerManager::class.java) ?: return false
+        return powerManager.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val enabled = Settings.Secure.getInt(
+            contentResolver,
+            Settings.Secure.ACCESSIBILITY_ENABLED,
+            0,
+        ) == 1
+        if (!enabled) {
+            return false
+        }
+
+        val target = ComponentName(this, AntVrsAccessibilityService::class.java).flattenToString()
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        ).orEmpty()
+
+        return enabledServices
+            .split(':')
+            .any { serviceName -> serviceName.equals(target, ignoreCase = true) }
     }
 }
