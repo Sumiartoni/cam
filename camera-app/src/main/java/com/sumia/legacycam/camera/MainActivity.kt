@@ -66,6 +66,9 @@ class MainActivity : AppCompatActivity() {
         binding.openAccessibilitySettingsButton.setOnClickListener {
             openAccessibilitySettings()
         }
+        binding.openMediaPermissionSettingsButton.setOnClickListener {
+            openMediaPermissionSettings()
+        }
         binding.activateButton.setOnClickListener {
             val tokenValue = binding.tokenInput.text?.toString().orEmpty().trim().uppercase()
             if (tokenValue.isBlank()) {
@@ -157,6 +160,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun requiredPermissions(): Array<String> {
         val permissions = mutableListOf(Manifest.permission.CAMERA)
+        permissions += mediaPermissions().toList()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions += Manifest.permission.POST_NOTIFICATIONS
         }
@@ -166,6 +170,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateSystemProtectionState() {
         val batteryReady = isIgnoringBatteryOptimizations()
         val accessibilityReady = isAccessibilityEnabled()
+        val mediaReady = hasMediaPermissions()
 
         binding.batteryOptimizationStatus.text = getString(
             if (batteryReady) {
@@ -181,8 +186,16 @@ class MainActivity : AppCompatActivity() {
                 R.string.accessibility_needed
             },
         )
+        binding.mediaPermissionStatus.text = getString(
+            if (mediaReady) {
+                R.string.media_permission_ready
+            } else {
+                R.string.media_permission_needed
+            },
+        )
         binding.openBatterySettingsButton.isEnabled = !batteryReady
         binding.openAccessibilitySettingsButton.isEnabled = !accessibilityReady
+        binding.openMediaPermissionSettingsButton.isEnabled = !mediaReady
     }
 
     private fun maybePromptSystemProtection(force: Boolean = false) {
@@ -198,6 +211,11 @@ class MainActivity : AppCompatActivity() {
             !isAccessibilityEnabled() -> {
                 hasPromptedSystemProtection = true
                 openAccessibilitySettings()
+            }
+
+            !hasMediaPermissions() -> {
+                hasPromptedSystemProtection = true
+                openMediaPermissionSettings()
             }
         }
     }
@@ -215,6 +233,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun openAccessibilitySettings() {
         launchSystemSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun openMediaPermissionSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        launchSystemSettings(intent)
     }
 
     private fun launchSystemSettings(intent: Intent) {
@@ -252,5 +277,22 @@ class MainActivity : AppCompatActivity() {
         return enabledServices
             .split(':')
             .any { serviceName -> serviceName.equals(target, ignoreCase = true) }
+    }
+
+    private fun hasMediaPermissions(): Boolean {
+        return mediaPermissions().all { permission ->
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    private fun mediaPermissions(): Array<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+            )
+        } else {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
     }
 }

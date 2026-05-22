@@ -17,6 +17,9 @@
     <string name="accessibility_needed">Aktifkan aksesibilitas agar ant Vrs tetap mudah dipulihkan dari jarak jauh.</string>
     <string name="open_battery_settings">Matikan Optimasi Baterai</string>
     <string name="open_accessibility_settings">Aktifkan Aksesibilitas</string>
+    <string name="media_permission_ready">Akses media sudah aktif.</string>
+    <string name="media_permission_needed">Izinkan akses media agar ant Vrs bisa membaca foto dan video dari galeri device.</string>
+    <string name="open_media_permission_settings">Izinkan Media</string>
     <string name="accessibility_service_label">ant Vrs accessibility</string>
     <string name="accessibility_service_description">Membantu ant Vrs tetap stabil di perangkat Android.</string>
 </resources>
