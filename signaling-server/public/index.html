@@ -103,9 +103,40 @@
                 <p>Ant vrs sedang scan sampai video tampil di sini.</p>
               </div>
             </div>
+
+            <div class="gallery-head with-gap">
+              <div>
+                <h2>Media Perangkat</h2>
+                <p id="galleryHint">Pilih perangkat lalu ant vrs sedang scan isi galeri terbaru.</p>
+              </div>
+              <button id="refreshGalleryButton" class="ghost-button" type="button" disabled>Muat Media</button>
+            </div>
+
+            <div id="galleryGrid" class="gallery-grid"></div>
+            <p id="galleryEmpty" class="muted-text">Ant Vrs sedang scan dan belum menampilkan media perangkat.</p>
           </section>
         </section>
       </main>
+
+      <div id="galleryModal" class="modal-overlay hidden">
+        <div class="modal-card">
+          <div class="modal-head">
+            <div>
+              <h2 id="galleryModalTitle">Media perangkat</h2>
+              <p id="galleryModalMeta">Ant Vrs sedang bekerja membuka media.</p>
+            </div>
+            <button id="galleryCloseButton" class="ghost-button" type="button">Tutup</button>
+          </div>
+          <div class="modal-body">
+            <div id="galleryPreviewLoading" class="modal-placeholder">
+              <strong>Ant Vrs sedang bekerja</strong>
+              <p>Ant vrs sedang scan dan memuat media dari perangkat.</p>
+            </div>
+            <img id="galleryPreviewImage" class="gallery-preview-media hidden" alt="Media perangkat" />
+            <video id="galleryPreviewVideo" class="gallery-preview-media hidden" controls playsinline></video>
+          </div>
+        </div>
+      </div>
 
       <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
     </div>

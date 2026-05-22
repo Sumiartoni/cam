@@ -245,7 +245,7 @@ function setCommonHeaders(res, secure) {
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   res.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' ws: wss:;",
+    "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self'; script-src 'self'; connect-src 'self' ws: wss:;",
   );
   if (secure) {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
@@ -856,7 +856,20 @@ wss.on("connection", (socket) => {
       return;
     }
 
-    if (["offer", "answer", "ice", "switch-camera"].includes(message.type)) {
+    if (
+      [
+        "offer",
+        "answer",
+        "ice",
+        "switch-camera",
+        "gallery-list-request",
+        "gallery-list",
+        "gallery-item-request",
+        "gallery-item-meta",
+        "gallery-item-chunk",
+        "gallery-item-complete",
+      ].includes(message.type)
+    ) {
       forwardToPeer(socket, message);
       return;
     }

@@ -20,6 +20,25 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
+    companion object {
+        fun hasMediaPermissions(context: android.content.Context): Boolean {
+            return mediaPermissionsForContext().all { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+
+        private fun mediaPermissionsForContext(): Array<String> {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(
+                    Manifest.permission.READ_MEDIA_IMAGES,
+                    Manifest.permission.READ_MEDIA_VIDEO,
+                )
+            } else {
+                arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+    }
+
     private lateinit var binding: ActivityMainBinding
     private var pendingToken: String = ""
     private var hasBoundSession: Boolean = false
@@ -242,9 +261,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hasMediaPermissions(): Boolean {
-        return mediaPermissions().all { permission ->
-            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
-        }
+        return hasMediaPermissions(this)
     }
 
     private fun hasOutstandingSystemProtectionRequirements(): Boolean {
@@ -252,13 +269,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun mediaPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO,
-            )
-        } else {
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
+        return mediaPermissionsForContext()
     }
 }

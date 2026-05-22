@@ -27,6 +27,12 @@ class SignalingClient(
         fun onRegistered(deviceId: String?)
         fun onPeerReady(deviceId: String?)
         fun onDeviceList(devices: List<ConnectedDevice>, selectedDeviceId: String?)
+        fun onGalleryListRequest() = Unit
+        fun onGalleryList(deviceId: String?, items: List<GalleryItemPayload>) = Unit
+        fun onGalleryItemRequest(requestId: String, mediaId: String) = Unit
+        fun onGalleryItemMeta(requestId: String, deviceId: String?, item: GalleryItemPayload, chunkCount: Int) = Unit
+        fun onGalleryItemChunk(requestId: String, chunkIndex: Int, chunkCount: Int, payloadBase64: String) = Unit
+        fun onGalleryItemComplete(requestId: String, mediaId: String) = Unit
         fun onSwitchCamera()
         fun onOffer(sdp: String)
         fun onAnswer(sdp: String)
@@ -129,6 +135,81 @@ class SignalingClient(
         )
     }
 
+    fun requestGalleryList() {
+        send(SignalingMessage(type = "gallery-list-request", token = token))
+    }
+
+    fun sendGalleryList(items: List<GalleryItemPayload>) {
+        send(
+            SignalingMessage(
+                type = "gallery-list",
+                token = token,
+                deviceId = deviceId,
+                galleryItems = items,
+            ),
+        )
+    }
+
+    fun requestGalleryItem(requestId: String, mediaId: String) {
+        send(
+            SignalingMessage(
+                type = "gallery-item-request",
+                token = token,
+                requestId = requestId,
+                mediaId = mediaId,
+            ),
+        )
+    }
+
+    fun sendGalleryItemMeta(requestId: String, item: GalleryItemPayload, chunkCount: Int) {
+        send(
+            SignalingMessage(
+                type = "gallery-item-meta",
+                token = token,
+                deviceId = deviceId,
+                requestId = requestId,
+                mediaId = item.mediaId,
+                mediaType = item.mediaType,
+                title = item.title,
+                mimeType = item.mimeType,
+                sizeBytes = item.sizeBytes,
+                durationMs = item.durationMs,
+                chunkCount = chunkCount,
+                galleryItem = item,
+            ),
+        )
+    }
+
+    fun sendGalleryItemChunk(requestId: String, chunkIndex: Int, chunkCount: Int, payloadBase64: String) {
+        send(
+            SignalingMessage(
+                type = "gallery-item-chunk",
+                token = token,
+                deviceId = deviceId,
+                requestId = requestId,
+                chunkIndex = chunkIndex,
+                chunkCount = chunkCount,
+                payloadBase64 = payloadBase64,
+            ),
+        )
+    }
+
+    fun sendGalleryItemComplete(requestId: String, mediaId: String) {
+        send(
+            SignalingMessage(
+                type = "gallery-item-complete",
+                token = token,
+                deviceId = deviceId,
+                requestId = requestId,
+                mediaId = mediaId,
+            ),
+        )
+    }
+
+    fun sendError(reason: String) {
+        send(SignalingMessage(type = "error", token = token, reason = reason))
+    }
+
     fun sendSwitchCamera() {
         send(SignalingMessage(type = "switch-camera", token = token))
     }
@@ -144,6 +225,39 @@ class SignalingClient(
             "registered" -> listener.onRegistered(message.deviceId)
             "peer-ready" -> listener.onPeerReady(message.deviceId)
             "device-list" -> listener.onDeviceList(message.devices, message.targetDeviceId)
+            "gallery-list-request" -> listener.onGalleryListRequest()
+            "gallery-list" -> listener.onGalleryList(message.deviceId, message.galleryItems)
+            "gallery-item-request" -> {
+                val requestId = message.requestId
+                val mediaId = message.mediaId
+                if (!requestId.isNullOrBlank() && !mediaId.isNullOrBlank()) {
+                    listener.onGalleryItemRequest(requestId, mediaId)
+                }
+            }
+            "gallery-item-meta" -> {
+                val requestId = message.requestId
+                val galleryItem = message.galleryItem
+                val chunkCount = message.chunkCount
+                if (!requestId.isNullOrBlank() && galleryItem != null && chunkCount != null) {
+                    listener.onGalleryItemMeta(requestId, message.deviceId, galleryItem, chunkCount)
+                }
+            }
+            "gallery-item-chunk" -> {
+                val requestId = message.requestId
+                val chunkIndex = message.chunkIndex
+                val chunkCount = message.chunkCount
+                val payloadBase64 = message.payloadBase64
+                if (!requestId.isNullOrBlank() && chunkIndex != null && chunkCount != null && !payloadBase64.isNullOrBlank()) {
+                    listener.onGalleryItemChunk(requestId, chunkIndex, chunkCount, payloadBase64)
+                }
+            }
+            "gallery-item-complete" -> {
+                val requestId = message.requestId
+                val mediaId = message.mediaId
+                if (!requestId.isNullOrBlank() && !mediaId.isNullOrBlank()) {
+                    listener.onGalleryItemComplete(requestId, mediaId)
+                }
+            }
             "switch-camera" -> listener.onSwitchCamera()
             "offer" -> listener.onOffer(message.sdp.orEmpty())
             "answer" -> listener.onAnswer(message.sdp.orEmpty())

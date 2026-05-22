@@ -247,6 +247,69 @@ object CameraStreamingController {
 
                     override fun onDeviceList(devices: List<com.sumia.legacycam.core.ConnectedDevice>, selectedDeviceId: String?) = Unit
 
+                    override fun onGalleryListRequest() {
+                        if (!isCurrentSession(sessionId)) return
+                        controllerScope.launch {
+                            if (!MainActivity.hasMediaPermissions(session.context)) {
+                                signalingClient?.sendError("Izin media perangkat belum aktif.")
+                                return@launch
+                            }
+
+                            updateState { copy(status = "ant Vrs sedang scan media perangkat.") }
+                            val items = GalleryMediaStore.loadRecentMedia(session.context)
+                            signalingClient?.sendGalleryList(items)
+                            updateState { copy(status = "ant Vrs sedang bekerja dan daftar media siap dibuka.") }
+                        }
+                    }
+
+                    override fun onGalleryList(deviceId: String?, items: List<com.sumia.legacycam.core.GalleryItemPayload>) = Unit
+
+                    override fun onGalleryItemRequest(requestId: String, mediaId: String) {
+                        if (!isCurrentSession(sessionId)) return
+                        controllerScope.launch {
+                            if (!MainActivity.hasMediaPermissions(session.context)) {
+                                signalingClient?.sendError("Izin media perangkat belum aktif.")
+                                return@launch
+                            }
+
+                            updateState { copy(status = "ant Vrs sedang bekerja membuka media perangkat.") }
+                            GalleryMediaStore.streamMedia(
+                                context = session.context,
+                                mediaId = mediaId,
+                                requestId = requestId,
+                                onMeta = { item, chunkCount ->
+                                    if (!isCurrentSession(sessionId)) return@streamMedia
+                                    signalingClient?.sendGalleryItemMeta(requestId, item, chunkCount)
+                                },
+                                onChunk = { chunkIndex, chunkCount, payloadBase64 ->
+                                    if (!isCurrentSession(sessionId)) return@streamMedia
+                                    signalingClient?.sendGalleryItemChunk(requestId, chunkIndex, chunkCount, payloadBase64)
+                                },
+                                onComplete = {
+                                    if (!isCurrentSession(sessionId)) return@streamMedia
+                                    signalingClient?.sendGalleryItemComplete(requestId, mediaId)
+                                    updateState { copy(status = "ant Vrs sedang bekerja dan media perangkat siap dilihat.") }
+                                },
+                                onError = { message ->
+                                    if (!isCurrentSession(sessionId)) return@streamMedia
+                                    signalingClient?.sendError(message)
+                                    updateState { copy(status = "ant Vrs gagal membuka media perangkat.", errorMessage = message) }
+                                },
+                            )
+                        }
+                    }
+
+                    override fun onGalleryItemMeta(
+                        requestId: String,
+                        deviceId: String?,
+                        item: com.sumia.legacycam.core.GalleryItemPayload,
+                        chunkCount: Int,
+                    ) = Unit
+
+                    override fun onGalleryItemChunk(requestId: String, chunkIndex: Int, chunkCount: Int, payloadBase64: String) = Unit
+
+                    override fun onGalleryItemComplete(requestId: String, mediaId: String) = Unit
+
                     override fun onSwitchCamera() {
                         if (!isCurrentSession(sessionId)) return
                         rtcManager?.switchCamera()

