@@ -136,12 +136,14 @@ class MainActivity : AppCompatActivity() {
         binding.tokenLayout.isVisible = true
         binding.activateButton.isVisible = true
         binding.runningTextValue.isVisible = false
+        binding.systemProtectionPanel.isVisible = false
     }
 
     private fun renderBoundState() {
         binding.tokenLayout.isVisible = false
         binding.activateButton.isVisible = false
         binding.runningTextValue.isVisible = true
+        binding.systemProtectionPanel.isVisible = true
     }
 
     private fun renderTokenError(message: String) {
@@ -190,14 +192,14 @@ class MainActivity : AppCompatActivity() {
         if (!force && hasPromptedSystemProtection) return
 
         when {
-            !isIgnoringBatteryOptimizations() -> {
-                hasPromptedSystemProtection = true
-                openBatteryOptimizationSettings()
-            }
-
             !hasMediaPermissions() -> {
                 hasPromptedSystemProtection = true
                 openMediaPermissionSettings()
+            }
+
+            !isIgnoringBatteryOptimizations() -> {
+                hasPromptedSystemProtection = true
+                openBatteryOptimizationSettings()
             }
         }
     }
