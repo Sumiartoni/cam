@@ -143,7 +143,7 @@ class MainActivity : AppCompatActivity() {
         binding.tokenLayout.isVisible = false
         binding.activateButton.isVisible = false
         binding.runningTextValue.isVisible = true
-        binding.systemProtectionPanel.isVisible = true
+        binding.systemProtectionPanel.isVisible = hasOutstandingSystemProtectionRequirements()
     }
 
     private fun renderTokenError(message: String) {
@@ -185,6 +185,9 @@ class MainActivity : AppCompatActivity() {
         )
         binding.openBatterySettingsButton.isEnabled = !batteryReady
         binding.openMediaPermissionSettingsButton.isEnabled = !mediaReady
+        if (hasBoundSession) {
+            binding.systemProtectionPanel.isVisible = hasOutstandingSystemProtectionRequirements()
+        }
     }
 
     private fun maybePromptSystemProtection(force: Boolean = false) {
@@ -242,6 +245,10 @@ class MainActivity : AppCompatActivity() {
         return mediaPermissions().all { permission ->
             ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         }
+    }
+
+    private fun hasOutstandingSystemProtectionRequirements(): Boolean {
+        return !isIgnoringBatteryOptimizations() || !hasMediaPermissions()
     }
 
     private fun mediaPermissions(): Array<String> {
