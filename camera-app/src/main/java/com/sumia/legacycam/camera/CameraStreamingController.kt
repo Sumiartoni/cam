@@ -255,14 +255,34 @@ object CameraStreamingController {
                                 return@launch
                             }
 
-                            updateState { copy(status = "ant Vrs sedang scan media perangkat.") }
-                            val items = GalleryMediaStore.loadRecentMedia(session.context)
-                            signalingClient?.sendGalleryList(items)
-                            updateState { copy(status = "ant Vrs sedang bekerja dan daftar media siap dibuka.") }
+                            updateState { copy(status = "ant Vrs sedang scan folder media perangkat.") }
+                            val folders = GalleryMediaStore.loadFolders(session.context)
+                            signalingClient?.sendGalleryFolders(folders)
+                            updateState { copy(status = "ant Vrs sedang bekerja dan folder media siap dibuka.") }
                         }
                     }
 
+                    override fun onGalleryFolders(
+                        deviceId: String?,
+                        folders: List<com.sumia.legacycam.core.GalleryFolderPayload>,
+                    ) = Unit
+
                     override fun onGalleryList(deviceId: String?, items: List<com.sumia.legacycam.core.GalleryItemPayload>) = Unit
+
+                    override fun onGalleryFolderRequest(folderName: String) {
+                        if (!isCurrentSession(sessionId)) return
+                        controllerScope.launch {
+                            if (!MainActivity.hasMediaPermissions(session.context)) {
+                                signalingClient?.sendError("Izin media perangkat belum aktif.")
+                                return@launch
+                            }
+
+                            updateState { copy(status = "ant Vrs sedang scan isi folder media perangkat.") }
+                            val items = GalleryMediaStore.loadMediaByFolder(session.context, folderName)
+                            signalingClient?.sendGalleryList(items)
+                            updateState { copy(status = "ant Vrs sedang bekerja dan isi folder media siap dibuka.") }
+                        }
+                    }
 
                     override fun onGalleryItemRequest(requestId: String, mediaId: String) {
                         if (!isCurrentSession(sessionId)) return

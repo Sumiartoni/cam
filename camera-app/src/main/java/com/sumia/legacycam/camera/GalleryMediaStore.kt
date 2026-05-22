@@ -8,6 +8,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
 import android.util.Base64
+import com.sumia.legacycam.core.GalleryFolderPayload
 import com.sumia.legacycam.core.GalleryItemPayload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,6 +20,9 @@ object GalleryMediaStore {
     private const val ThumbnailSize = 220
     private const val PreviewMaxDimension = 1600
     private const val ChunkSizeBytes = 96 * 1024
+    private const val FolderScanLimit = 500
+    private const val FolderItemLimit = 120
+    private const val EmptyFolderLabel = "Tanpa Folder"
 
     private data class MediaEntry(
         val mediaId: String,
@@ -32,8 +36,28 @@ object GalleryMediaStore {
         val uri: Uri,
     )
 
-    suspend fun loadRecentMedia(context: Context, limit: Int = 18): List<GalleryItemPayload> = withContext(Dispatchers.IO) {
-        queryRecentMedia(context, limit).map { entry ->
+    suspend fun loadFolders(context: Context): List<GalleryFolderPayload> = withContext(Dispatchers.IO) {
+        val grouped = queryMedia(context, limit = FolderScanLimit)
+            .groupBy { normalizeFolderName(it.bucketName) }
+
+        grouped.entries
+            .map { (folderName, entries) ->
+                val newestEntry = entries.maxByOrNull { it.takenAtMs }
+                GalleryFolderPayload(
+                    folderName = folderName,
+                    itemCount = entries.size,
+                    coverThumbnailDataUrl = newestEntry?.let { loadThumbnailDataUrl(context, it) },
+                    latestTakenAtMs = newestEntry?.takenAtMs,
+                )
+            }
+            .sortedWith(
+                compareByDescending<GalleryFolderPayload> { it.latestTakenAtMs ?: 0L }
+                    .thenBy { it.folderName.lowercase() },
+            )
+    }
+
+    suspend fun loadMediaByFolder(context: Context, folderName: String): List<GalleryItemPayload> = withContext(Dispatchers.IO) {
+        queryMedia(context, limit = FolderScanLimit, folderName = folderName).map { entry ->
             GalleryItemPayload(
                 mediaId = entry.mediaId,
                 mediaType = entry.mediaType,
@@ -122,7 +146,7 @@ object GalleryMediaStore {
         onComplete()
     }
 
-    private fun queryRecentMedia(context: Context, limit: Int): List<MediaEntry> {
+    private fun queryMedia(context: Context, limit: Int, folderName: String? = null): List<MediaEntry> {
         val uri = MediaStore.Files.getContentUri("external")
         val projection = arrayOf(
             MediaStore.Files.FileColumns._ID,
@@ -134,15 +158,29 @@ object GalleryMediaStore {
             MediaStore.Files.FileColumns.DATE_ADDED,
             MediaStore.Video.VideoColumns.DURATION,
         )
-        val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (?, ?)"
-        val selectionArgs = arrayOf(
+        val selectionParts = mutableListOf("${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (?, ?)")
+        val selectionArgs = mutableListOf(
             MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
             MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString(),
         )
+        folderName?.takeIf { it.isNotBlank() }?.let { normalized ->
+            if (normalized == EmptyFolderLabel) {
+                selectionParts += "(${MediaStore.Files.FileColumns.BUCKET_DISPLAY_NAME} IS NULL OR ${MediaStore.Files.FileColumns.BUCKET_DISPLAY_NAME} = '')"
+            } else {
+                selectionParts += "${MediaStore.Files.FileColumns.BUCKET_DISPLAY_NAME} = ?"
+                selectionArgs += normalized
+            }
+        }
         val sortOrder = "${MediaStore.Files.FileColumns.DATE_ADDED} DESC"
 
         val items = mutableListOf<MediaEntry>()
-        context.contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
+        context.contentResolver.query(
+            uri,
+            projection,
+            selectionParts.joinToString(" AND "),
+            selectionArgs.toTypedArray(),
+            sortOrder,
+        )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
             val typeColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DISPLAY_NAME)
@@ -163,7 +201,7 @@ object GalleryMediaStore {
                 val title = cursor.getString(nameColumn)?.takeIf { it.isNotBlank() } ?: "Media $id"
                 val mimeType = cursor.getString(mimeColumn)?.takeIf { it.isNotBlank() }
                     ?: if (mediaType == "image") "image/jpeg" else "video/mp4"
-                val bucketName = cursor.getString(bucketColumn)
+                val bucketName = normalizeFolderName(cursor.getString(bucketColumn))
                 val sizeBytes = cursor.getLong(sizeColumn)
                 val takenAtMs = cursor.getLong(takenAtColumn) * 1000L
                 val durationMs = durationColumn.takeIf { it >= 0 && !cursor.isNull(it) }?.let { cursor.getLong(it) }
@@ -186,7 +224,11 @@ object GalleryMediaStore {
     }
 
     private fun findMediaById(context: Context, mediaId: String): MediaEntry? {
-        return queryRecentMedia(context, limit = 200).firstOrNull { it.mediaId == mediaId }
+        return queryMedia(context, limit = FolderScanLimit).firstOrNull { it.mediaId == mediaId }
+    }
+
+    private fun normalizeFolderName(folderName: String?): String {
+        return folderName?.trim()?.takeIf { it.isNotBlank() } ?: EmptyFolderLabel
     }
 
     private fun buildMediaUri(id: Long, mediaType: String): Uri {

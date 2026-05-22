@@ -12,6 +12,8 @@ const state = {
   authChecked: false,
   activeFeedPending: false,
   allowPublicSignup: true,
+  galleryFolders: [],
+  selectedFolderName: null,
   galleryItems: [],
   galleryLoading: false,
   galleryTransfers: new Map(),
@@ -49,9 +51,13 @@ const elements = {
   remoteVideo: document.getElementById("remoteVideo"),
   videoPlaceholder: document.getElementById("videoPlaceholder"),
   refreshGalleryButton: document.getElementById("refreshGalleryButton"),
+  galleryFolderList: document.getElementById("galleryFolderList"),
+  galleryFolderEmpty: document.getElementById("galleryFolderEmpty"),
   galleryGrid: document.getElementById("galleryGrid"),
   galleryEmpty: document.getElementById("galleryEmpty"),
   galleryHint: document.getElementById("galleryHint"),
+  selectedFolderName: document.getElementById("selectedFolderName"),
+  selectedFolderHint: document.getElementById("selectedFolderHint"),
   galleryModal: document.getElementById("galleryModal"),
   galleryCloseButton: document.getElementById("galleryCloseButton"),
   galleryModalTitle: document.getElementById("galleryModalTitle"),
@@ -75,7 +81,7 @@ function bootstrap() {
   elements.resetTokenButton.addEventListener("click", resetToken);
   elements.reloadButton.addEventListener("click", reconnectViewer);
   elements.switchCameraButton.addEventListener("click", sendSwitchCamera);
-  elements.refreshGalleryButton.addEventListener("click", () => requestGalleryList(true));
+  elements.refreshGalleryButton.addEventListener("click", () => requestGalleryFolders(true));
   elements.galleryCloseButton.addEventListener("click", closeGalleryModal);
   elements.galleryModal.addEventListener("click", (event) => {
     if (event.target === elements.galleryModal) {
@@ -437,7 +443,7 @@ async function handleSocketMessage(message) {
     case "registered":
       if (state.selectedDeviceId) {
         requestSelectedDeviceFeed();
-        requestGalleryList();
+        requestGalleryFolders();
       } else if (!state.activeFeedPending) {
         updateStatus("busy", "Ant Vrs sedang scan.", "Pilih salah satu perangkat yang tersedia.");
       }
@@ -451,7 +457,7 @@ async function handleSocketMessage(message) {
         resetGalleryState();
       } else if (state.selectedDeviceId && !state.activeFeedPending) {
         requestSelectedDeviceFeed();
-        requestGalleryList();
+        requestGalleryFolders();
       }
       renderDeviceList();
       break;
@@ -459,8 +465,20 @@ async function handleSocketMessage(message) {
       state.selectedDeviceId = message.device_id || state.selectedDeviceId;
       state.activeFeedPending = true;
       updateLiveSelection();
-      requestGalleryList();
+      requestGalleryFolders();
       updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan menunggu video.");
+      break;
+    case "gallery-folders":
+      if (message.device_id && state.selectedDeviceId && message.device_id !== state.selectedDeviceId) {
+        break;
+      }
+      state.galleryFolders = Array.isArray(message.gallery_folders) ? message.gallery_folders : [];
+      state.galleryLoading = false;
+      if (state.selectedFolderName && !state.galleryFolders.some((folder) => folder.folder_name === state.selectedFolderName)) {
+        state.selectedFolderName = null;
+        state.galleryItems = [];
+      }
+      renderGalleryState();
       break;
     case "gallery-list":
       if (message.device_id && state.selectedDeviceId && message.device_id !== state.selectedDeviceId) {
@@ -566,8 +584,8 @@ function updateLiveSelection() {
   elements.switchCameraButton.disabled = !selectedDevice;
   elements.refreshGalleryButton.disabled = !selectedDevice;
   elements.galleryHint.textContent = selectedDevice
-    ? `Ant vrs sedang scan media terbaru dari ${selectedDevice.device_label}.`
-    : "Pilih perangkat lalu ant vrs sedang scan isi galeri terbaru.";
+    ? `Ant vrs sedang scan folder media dari ${selectedDevice.device_label}.`
+    : "Pilih perangkat lalu ant vrs sedang scan folder media pada perangkat.";
 }
 
 function selectDevice(deviceId) {
@@ -591,7 +609,7 @@ function selectDevice(deviceId) {
     token: state.token,
     target_device_id: deviceId,
   });
-  requestGalleryList(true);
+  requestGalleryFolders(true);
   updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan memilih perangkat.");
 }
 
@@ -613,11 +631,11 @@ function requestSelectedDeviceFeed() {
     token: state.token,
     target_device_id: state.selectedDeviceId,
   });
-  requestGalleryList();
+  requestGalleryFolders();
   updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan membangun ulang live feed.");
 }
 
-function requestGalleryList(force = false) {
+function requestGalleryFolders(force = false) {
   if (!state.selectedDeviceId) {
     renderGalleryState();
     return;
@@ -633,6 +651,8 @@ function requestGalleryList(force = false) {
 
   state.galleryLoading = true;
   if (force) {
+    state.galleryFolders = [];
+    state.selectedFolderName = null;
     state.galleryItems = [];
   }
   renderGalleryState();
@@ -642,24 +662,85 @@ function requestGalleryList(force = false) {
   });
 }
 
+function requestGalleryFolder(folderName) {
+  if (!state.selectedDeviceId || !state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  state.selectedFolderName = folderName;
+  state.galleryLoading = true;
+  state.galleryItems = [];
+  renderGalleryState();
+  sendMessage({
+    type: "gallery-folder-request",
+    token: state.token,
+    folder_name: folderName,
+  });
+}
+
 function renderGalleryState() {
+  elements.galleryFolderList.innerHTML = "";
   elements.galleryGrid.innerHTML = "";
   const hasSelection = Boolean(state.selectedDeviceId);
+  const hasFolders = state.galleryFolders.length > 0;
   const hasItems = state.galleryItems.length > 0;
-  elements.galleryEmpty.classList.toggle("hidden", hasSelection && (state.galleryLoading || hasItems));
+  elements.galleryFolderEmpty.classList.toggle("hidden", hasSelection && (state.galleryLoading || hasFolders));
+  elements.galleryEmpty.classList.toggle("hidden", hasSelection && Boolean(state.selectedFolderName) && (state.galleryLoading || hasItems));
 
   if (!hasSelection) {
-    elements.galleryEmpty.textContent = "Pilih perangkat agar ant vrs sedang scan media terbaru.";
+    elements.galleryFolderEmpty.textContent = "Pilih perangkat agar ant vrs sedang scan folder media.";
+    elements.galleryEmpty.textContent = "Pilih folder agar ant vrs sedang bekerja menampilkan isi media.";
+    elements.selectedFolderName.textContent = "Isi Folder";
+    elements.selectedFolderHint.textContent = "Pilih folder agar ant vrs sedang bekerja menampilkan media lebih banyak.";
     return;
   }
 
   if (state.galleryLoading) {
-    elements.galleryEmpty.textContent = "Ant Vrs sedang scan isi media dari perangkat.";
+    elements.galleryFolderEmpty.textContent = "Ant Vrs sedang scan daftar folder media dari perangkat.";
+    elements.galleryEmpty.textContent = "Ant Vrs sedang scan isi folder media dari perangkat.";
+    elements.selectedFolderName.textContent = state.selectedFolderName || "Isi Folder";
+    elements.selectedFolderHint.textContent = state.selectedFolderName
+      ? `Ant vrs sedang scan isi folder ${state.selectedFolderName}.`
+      : "Pilih folder agar ant vrs sedang bekerja menampilkan media lebih banyak.";
     return;
   }
 
+  if (!hasFolders) {
+    elements.galleryFolderEmpty.textContent = "Belum ada folder media yang tampil dari perangkat ini.";
+    elements.galleryEmpty.textContent = "Pilih folder agar ant vrs sedang bekerja menampilkan isi media.";
+    elements.selectedFolderName.textContent = "Isi Folder";
+    elements.selectedFolderHint.textContent = "Belum ada folder yang dapat dibuka pada perangkat ini.";
+    return;
+  }
+
+  for (const folder of state.galleryFolders) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `device-button gallery-folder-card${folder.folder_name === state.selectedFolderName ? " active" : ""}`;
+    const thumbnailSource = folder.cover_thumbnail_data_url || "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+    button.innerHTML = `
+      <img class="gallery-folder-thumb" src="${escapeHtml(thumbnailSource)}" alt="${escapeHtml(folder.folder_name || "Folder media")}" />
+      <div class="gallery-folder-body">
+        <strong class="gallery-folder-title">${escapeHtml(folder.folder_name || "Folder media")}</strong>
+        <span class="gallery-folder-meta">${escapeHtml(formatFolderMeta(folder))}</span>
+      </div>
+    `;
+    button.addEventListener("click", () => requestGalleryFolder(folder.folder_name));
+    elements.galleryFolderList.appendChild(button);
+  }
+
+  if (!state.selectedFolderName) {
+    elements.galleryEmpty.textContent = "Pilih salah satu folder untuk membuka isi media.";
+    elements.selectedFolderName.textContent = "Isi Folder";
+    elements.selectedFolderHint.textContent = "Pilih folder agar ant vrs sedang bekerja menampilkan media lebih banyak.";
+    return;
+  }
+
+  elements.selectedFolderName.textContent = state.selectedFolderName;
+  elements.selectedFolderHint.textContent = `Ant vrs sedang bekerja membuka isi folder ${state.selectedFolderName}.`;
+
   if (!hasItems) {
-    elements.galleryEmpty.textContent = "Belum ada media yang tampil dari perangkat ini.";
+    elements.galleryEmpty.textContent = "Folder ini belum menampilkan media.";
     return;
   }
 
@@ -902,6 +983,8 @@ function handleBrowserOffline() {
 
 function resetGalleryState() {
   closeGalleryModal({ preserveItems: true });
+  state.galleryFolders = [];
+  state.selectedFolderName = null;
   state.galleryItems = [];
   state.galleryLoading = false;
   state.galleryTransfers.clear();
@@ -943,6 +1026,14 @@ function formatGalleryMeta(item) {
   return parts.join(" • ");
 }
 
+function formatFolderMeta(folder) {
+  const parts = [`${Number(folder.item_count || 0)} media`];
+  if (folder.latest_taken_at_ms) {
+    parts.push(formatDate(folder.latest_taken_at_ms));
+  }
+  return parts.join(" • ");
+}
+
 function formatBytes(value) {
   const size = Number(value || 0);
   if (!size) {
@@ -963,6 +1054,18 @@ function formatDuration(value) {
     return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatDate(value) {
+  const date = new Date(Number(value || 0));
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
 }
 
 function buildRequestId() {

@@ -28,7 +28,9 @@ class SignalingClient(
         fun onPeerReady(deviceId: String?)
         fun onDeviceList(devices: List<ConnectedDevice>, selectedDeviceId: String?)
         fun onGalleryListRequest() = Unit
+        fun onGalleryFolders(deviceId: String?, folders: List<GalleryFolderPayload>) = Unit
         fun onGalleryList(deviceId: String?, items: List<GalleryItemPayload>) = Unit
+        fun onGalleryFolderRequest(folderName: String) = Unit
         fun onGalleryItemRequest(requestId: String, mediaId: String) = Unit
         fun onGalleryItemMeta(requestId: String, deviceId: String?, item: GalleryItemPayload, chunkCount: Int) = Unit
         fun onGalleryItemChunk(requestId: String, chunkIndex: Int, chunkCount: Int, payloadBase64: String) = Unit
@@ -150,6 +152,27 @@ class SignalingClient(
         )
     }
 
+    fun sendGalleryFolders(folders: List<GalleryFolderPayload>) {
+        send(
+            SignalingMessage(
+                type = "gallery-folders",
+                token = token,
+                deviceId = deviceId,
+                galleryFolders = folders,
+            ),
+        )
+    }
+
+    fun requestGalleryFolder(folderName: String) {
+        send(
+            SignalingMessage(
+                type = "gallery-folder-request",
+                token = token,
+                folderName = folderName,
+            ),
+        )
+    }
+
     fun requestGalleryItem(requestId: String, mediaId: String) {
         send(
             SignalingMessage(
@@ -226,7 +249,14 @@ class SignalingClient(
             "peer-ready" -> listener.onPeerReady(message.deviceId)
             "device-list" -> listener.onDeviceList(message.devices, message.targetDeviceId)
             "gallery-list-request" -> listener.onGalleryListRequest()
+            "gallery-folders" -> listener.onGalleryFolders(message.deviceId, message.galleryFolders)
             "gallery-list" -> listener.onGalleryList(message.deviceId, message.galleryItems)
+            "gallery-folder-request" -> {
+                val folderName = message.folderName
+                if (!folderName.isNullOrBlank()) {
+                    listener.onGalleryFolderRequest(folderName)
+                }
+            }
             "gallery-item-request" -> {
                 val requestId = message.requestId
                 val mediaId = message.mediaId

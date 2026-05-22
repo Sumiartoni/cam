@@ -23,6 +23,14 @@ data class GalleryItemPayload(
 )
 
 @Serializable
+data class GalleryFolderPayload(
+    @SerialName("folder_name") val folderName: String,
+    @SerialName("item_count") val itemCount: Int,
+    @SerialName("cover_thumbnail_data_url") val coverThumbnailDataUrl: String? = null,
+    @SerialName("latest_taken_at_ms") val latestTakenAtMs: Long? = null,
+)
+
+@Serializable
 data class SignalingMessage(
     val type: String,
     val token: String? = null,
@@ -39,6 +47,7 @@ data class SignalingMessage(
     @SerialName("request_id") val requestId: String? = null,
     @SerialName("media_id") val mediaId: String? = null,
     @SerialName("media_type") val mediaType: String? = null,
+    @SerialName("folder_name") val folderName: String? = null,
     val title: String? = null,
     @SerialName("mime_type") val mimeType: String? = null,
     @SerialName("size_bytes") val sizeBytes: Long? = null,
@@ -48,6 +57,7 @@ data class SignalingMessage(
     @SerialName("payload_base64") val payloadBase64: String? = null,
     val reason: String? = null,
     val devices: List<ConnectedDevice> = emptyList(),
+    @SerialName("gallery_folders") val galleryFolders: List<GalleryFolderPayload> = emptyList(),
     @SerialName("gallery_items") val galleryItems: List<GalleryItemPayload> = emptyList(),
     @SerialName("gallery_item") val galleryItem: GalleryItemPayload? = null,
 )

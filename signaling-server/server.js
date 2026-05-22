@@ -863,6 +863,8 @@ wss.on("connection", (socket) => {
         "ice",
         "switch-camera",
         "gallery-list-request",
+        "gallery-folders",
+        "gallery-folder-request",
         "gallery-list",
         "gallery-item-request",
         "gallery-item-meta",
