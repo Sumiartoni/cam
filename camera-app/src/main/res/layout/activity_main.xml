@@ -89,21 +89,6 @@
                     android:text="@string/open_battery_settings" />
 
                 <TextView
-                    android:id="@+id/accessibilityStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:textColor="@android:color/white" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/openAccessibilitySettingsButton"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/open_accessibility_settings" />
-
-                <TextView
                     android:id="@+id/mediaPermissionStatus"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

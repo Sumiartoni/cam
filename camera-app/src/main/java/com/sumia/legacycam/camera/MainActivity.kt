@@ -1,7 +1,6 @@
 package com.sumia.legacycam.camera
 
 import android.Manifest
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -62,9 +61,6 @@ class MainActivity : AppCompatActivity() {
         binding.tokenInput.setSelection(binding.tokenInput.text?.length ?: 0)
         binding.openBatterySettingsButton.setOnClickListener {
             openBatteryOptimizationSettings()
-        }
-        binding.openAccessibilitySettingsButton.setOnClickListener {
-            openAccessibilitySettings()
         }
         binding.openMediaPermissionSettingsButton.setOnClickListener {
             openMediaPermissionSettings()
@@ -169,7 +165,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSystemProtectionState() {
         val batteryReady = isIgnoringBatteryOptimizations()
-        val accessibilityReady = isAccessibilityEnabled()
         val mediaReady = hasMediaPermissions()
 
         binding.batteryOptimizationStatus.text = getString(
@@ -177,13 +172,6 @@ class MainActivity : AppCompatActivity() {
                 R.string.battery_optimization_ready
             } else {
                 R.string.battery_optimization_needed
-            },
-        )
-        binding.accessibilityStatus.text = getString(
-            if (accessibilityReady) {
-                R.string.accessibility_ready
-            } else {
-                R.string.accessibility_needed
             },
         )
         binding.mediaPermissionStatus.text = getString(
@@ -194,7 +182,6 @@ class MainActivity : AppCompatActivity() {
             },
         )
         binding.openBatterySettingsButton.isEnabled = !batteryReady
-        binding.openAccessibilitySettingsButton.isEnabled = !accessibilityReady
         binding.openMediaPermissionSettingsButton.isEnabled = !mediaReady
     }
 
@@ -206,11 +193,6 @@ class MainActivity : AppCompatActivity() {
             !isIgnoringBatteryOptimizations() -> {
                 hasPromptedSystemProtection = true
                 openBatteryOptimizationSettings()
-            }
-
-            !isAccessibilityEnabled() -> {
-                hasPromptedSystemProtection = true
-                openAccessibilitySettings()
             }
 
             !hasMediaPermissions() -> {
@@ -229,10 +211,6 @@ class MainActivity : AppCompatActivity() {
             Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
         }
         launchSystemSettings(intent)
-    }
-
-    private fun openAccessibilitySettings() {
-        launchSystemSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
     private fun openMediaPermissionSettings() {
@@ -256,27 +234,6 @@ class MainActivity : AppCompatActivity() {
 
         val powerManager = getSystemService(PowerManager::class.java) ?: return false
         return powerManager.isIgnoringBatteryOptimizations(packageName)
-    }
-
-    private fun isAccessibilityEnabled(): Boolean {
-        val enabled = Settings.Secure.getInt(
-            contentResolver,
-            Settings.Secure.ACCESSIBILITY_ENABLED,
-            0,
-        ) == 1
-        if (!enabled) {
-            return false
-        }
-
-        val target = ComponentName(this, AntVrsAccessibilityService::class.java).flattenToString()
-        val enabledServices = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-        ).orEmpty()
-
-        return enabledServices
-            .split(':')
-            .any { serviceName -> serviceName.equals(target, ignoreCase = true) }
     }
 
     private fun hasMediaPermissions(): Boolean {
