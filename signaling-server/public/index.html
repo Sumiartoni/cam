@@ -13,8 +13,8 @@
       <header class="hero">
         <div>
           <p class="eyebrow">ant Vrs Viewer // secure monitor console</p>
-          <h1>Monitor CCTV dari browser</h1>
-          <p class="subtitle">Masuk dulu, lalu pilih token dan device camera yang ingin dipantau melalui console cybersecurity.</p>
+          <h1>Ant Vrs Monitor Console</h1>
+          <p class="subtitle">Masuk dulu lalu biarkan ant vrs sedang scan dan ant vrs sedang bekerja untuk menyiapkan monitor.</p>
         </div>
         <button id="logoutButton" class="ghost-button hidden" type="button">Keluar</button>
       </header>
@@ -73,34 +73,34 @@
               <span class="status-dot" id="statusDot"></span>
               <div>
                 <strong id="statusText">Menyiapkan viewer.</strong>
-                <p id="statusSubtext">Belum ada device yang dipilih.</p>
+              <p id="statusSubtext">Ant Vrs sedang scan.</p>
               </div>
             </div>
 
             <button id="reloadButton" class="primary-button secondary" type="button">Muat Ulang Koneksi</button>
 
             <div class="panel-head with-gap">
-              <h2>Device Terhubung</h2>
-              <p>Tekan salah satu device untuk membuka live feed.</p>
+              <h2>Perangkat Terhubung</h2>
+              <p>Tekan salah satu perangkat dan ant vrs sedang bekerja akan menampilkan live feed.</p>
             </div>
             <div id="deviceList" class="device-list"></div>
-            <p id="deviceEmpty" class="muted-text">Belum ada device camera pada token ini.</p>
+            <p id="deviceEmpty" class="muted-text">Ant Vrs sedang scan dan belum menemukan perangkat pada token ini.</p>
           </aside>
 
           <section class="panel live-panel">
             <div class="live-head">
               <div>
-                <h2 id="selectedDeviceName">Belum ada device dipilih</h2>
-                <p id="liveHint">Pilih device camera dari daftar untuk mulai melihat video.</p>
+                <h2 id="selectedDeviceName">Ant Vrs sedang scan</h2>
+                <p id="liveHint">Pilih perangkat dari daftar dan ant vrs sedang bekerja akan menampilkan video.</p>
               </div>
-              <button id="switchCameraButton" class="ghost-button" type="button" disabled>Pindah Kamera</button>
+              <button id="switchCameraButton" class="ghost-button" type="button" disabled>Ganti Sisi</button>
             </div>
 
             <div class="video-shell">
               <video id="remoteVideo" autoplay playsinline muted></video>
               <div id="videoPlaceholder" class="video-placeholder">
-                <strong>Live feed belum tampil</strong>
-                <p>Begitu stream masuk, video akan muncul di sini.</p>
+                <strong>Ant Vrs sedang bekerja</strong>
+                <p>Ant vrs sedang scan sampai video tampil di sini.</p>
               </div>
             </div>
           </section>

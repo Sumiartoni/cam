@@ -140,7 +140,7 @@ async function handleRegisterSubmit(event) {
     applyViewerIdentity(payload);
     showViewerPanel();
     connectViewer();
-    showToast("Akun berhasil dibuat. Token akun siap dipakai di aplikasi camera.");
+    showToast("Akun berhasil dibuat. Ant Vrs sedang bekerja dan token akun siap dipakai.");
   } catch {
     showToast("Server pendaftaran viewer tidak dapat dijangkau.");
   }
@@ -174,7 +174,7 @@ function showLoginPanel() {
   elements.viewerPanel.classList.add("hidden");
   elements.logoutButton.classList.add("hidden");
   updateRegisterAvailability();
-  updateStatus("error", "Viewer terkunci.", "Masuk dulu untuk mengakses daftar device dan live feed.");
+  updateStatus("error", "Ant Vrs sedang scan.", "Masuk dulu agar ant vrs sedang bekerja bisa mengakses monitor.");
 }
 
 function showViewerPanel() {
@@ -182,7 +182,7 @@ function showViewerPanel() {
   elements.viewerPanel.classList.remove("hidden");
   elements.logoutButton.classList.remove("hidden");
   syncTokenView();
-  updateStatus("busy", "Viewer siap.", "Menghubungkan ke signaling server.");
+  updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan menghubungkan monitor ke server.");
 }
 
 function applyViewerIdentity(payload) {
@@ -240,7 +240,7 @@ async function resetToken() {
     syncTokenView();
     renderDeviceList();
     reconnectViewer();
-    showToast("Token akun diganti. Camera perlu memakai token baru ini.");
+    showToast("Token akun diganti. Ant Vrs sedang bekerja dan perangkat perlu memakai token baru ini.");
   } catch {
     showToast("Server tidak dapat mengganti token akun.");
   }
@@ -258,7 +258,7 @@ async function connectViewer() {
   state.manualDisconnect = false;
 
   if (!state.token) {
-    updateStatus("error", "Token akun belum tersedia.", "Login ulang atau buat akun baru.");
+    updateStatus("error", "Ant Vrs sedang scan.", "Login ulang atau buat akun baru.");
     return;
   }
 
@@ -294,7 +294,7 @@ async function connectViewer() {
     if (!isActiveSocket(socket, socketId)) {
       return;
     }
-    updateStatus("busy", "Viewer terhubung.", "Mengambil daftar device pada token akun ini.");
+    updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan daftar perangkat pada token akun ini.");
     sendMessage({
       type: "register",
       token: state.token,
@@ -325,7 +325,7 @@ async function connectViewer() {
     if (state.manualDisconnect) {
       return;
     }
-    updateStatus("error", "Viewer terputus.", "Mencoba menghubungkan ulang ke server.");
+    updateStatus("error", "Ant Vrs sedang scan.", "Ant vrs sedang bekerja untuk menghubungkan ulang ke server.");
     scheduleReconnect();
   });
 
@@ -333,13 +333,13 @@ async function connectViewer() {
     if (!isActiveSocket(socket, socketId)) {
       return;
     }
-    updateStatus("error", "Viewer gagal terhubung.", "Periksa koneksi internet dan login Anda.");
+    updateStatus("error", "Ant Vrs sedang scan.", "Periksa koneksi internet dan login Anda.");
   });
 }
 
 function reconnectViewer() {
   clearPeerRecoveryTimer();
-  updateStatus("busy", "Viewer memuat ulang koneksi.", "Menyambungkan ulang WebSocket dan WebRTC.");
+  updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan memuat ulang koneksi.");
   connectViewer();
 }
 
@@ -380,12 +380,12 @@ function ensurePeerConnection() {
     if (nextState === "connected") {
       clearPeerRecoveryTimer();
       state.activeFeedPending = false;
-      updateStatus("online", "Live feed aktif.", "Frame video sedang diterima dari device camera.");
+      updateStatus("online", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan video sedang diterima.");
     } else if (nextState === "connecting") {
       clearPeerRecoveryTimer();
-      updateStatus("busy", "Viewer membangun live feed.", "Menunggu video dari device camera.");
+      updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan menunggu video.");
     } else if (nextState === "failed" || nextState === "disconnected") {
-      updateStatus("error", "Live feed terputus.", "Koneksi WebRTC perlu dibangun ulang.");
+      updateStatus("error", "Ant Vrs sedang scan.", "Ant vrs sedang bekerja untuk membangun ulang koneksi.");
       schedulePeerRecovery();
     }
   });
@@ -411,7 +411,7 @@ async function handleSocketMessage(message) {
       if (state.selectedDeviceId) {
         requestSelectedDeviceFeed();
       } else if (!state.activeFeedPending) {
-        updateStatus("busy", "Viewer standby.", "Pilih salah satu device camera yang tersedia.");
+        updateStatus("busy", "Ant Vrs sedang scan.", "Pilih salah satu perangkat yang tersedia.");
       }
       break;
     case "device-list":
@@ -429,7 +429,7 @@ async function handleSocketMessage(message) {
       state.selectedDeviceId = message.device_id || state.selectedDeviceId;
       state.activeFeedPending = true;
       updateLiveSelection();
-      updateStatus("busy", "Device siap.", "Viewer menunggu offer video dari camera.");
+      updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan menunggu video.");
       break;
     case "offer":
       await handleOffer(message.sdp);
@@ -445,7 +445,7 @@ async function handleSocketMessage(message) {
       }
       state.activeFeedPending = false;
       updateLiveSelection();
-      updateStatus("error", "Device keluar.", "Pilih ulang device lain saat sudah tersedia.");
+      updateStatus("error", "Ant Vrs sedang scan.", "Pilih ulang perangkat lain saat sudah tersedia.");
       break;
     case "error":
       showToast(message.reason || "Viewer menerima error dari server.");
@@ -510,16 +510,16 @@ function renderDeviceList() {
 
 function updateLiveSelection() {
   const selectedDevice = state.devices.find((device) => device.device_id === state.selectedDeviceId);
-  elements.selectedDeviceName.textContent = selectedDevice?.device_label || "Belum ada device dipilih";
+  elements.selectedDeviceName.textContent = selectedDevice?.device_label || "Ant Vrs sedang scan";
   elements.liveHint.textContent = selectedDevice
-    ? `Live feed untuk ${selectedDevice.device_label} pada token akun ini akan muncul di sini.`
-    : "Pilih device camera dari daftar untuk mulai melihat video.";
+    ? `Ant vrs sedang bekerja untuk ${selectedDevice.device_label} dan video akan tampil di sini.`
+    : "Pilih perangkat dari daftar dan ant vrs sedang bekerja akan menampilkan video.";
   elements.switchCameraButton.disabled = !selectedDevice;
 }
 
 function selectDevice(deviceId) {
   if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
-    showToast("Viewer belum terhubung ke server.");
+    showToast("Ant Vrs sedang scan dan belum terhubung ke server.");
     return;
   }
 
@@ -537,7 +537,7 @@ function selectDevice(deviceId) {
     token: state.token,
     target_device_id: deviceId,
   });
-  updateStatus("busy", "Meminta live feed.", "Viewer sedang memilih device camera.");
+  updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan memilih perangkat.");
 }
 
 function requestSelectedDeviceFeed() {
@@ -558,12 +558,12 @@ function requestSelectedDeviceFeed() {
     token: state.token,
     target_device_id: state.selectedDeviceId,
   });
-  updateStatus("busy", "Membangun ulang live feed.", "Viewer meminta ulang stream setelah koneksi berubah.");
+  updateStatus("busy", "Ant Vrs sedang bekerja.", "Ant vrs sedang scan dan membangun ulang live feed.");
 }
 
 function sendSwitchCamera() {
   if (!state.selectedDeviceId) {
-    showToast("Pilih device camera dulu.");
+    showToast("Pilih perangkat dulu.");
     return;
   }
 
@@ -571,7 +571,7 @@ function sendSwitchCamera() {
     type: "switch-camera",
     token: state.token,
   });
-  showToast("Perintah pindah kamera dikirim ke device camera.");
+  showToast("Perintah ganti sisi dikirim. Ant Vrs sedang bekerja.");
 }
 
 function sendMessage(payload) {
@@ -628,7 +628,7 @@ function clearPeerRecoveryTimer() {
 }
 
 function handleBrowserOnline() {
-  showToast("Jaringan kembali online. Viewer mencoba memulihkan koneksi.");
+  showToast("Jaringan kembali online. Ant Vrs sedang bekerja.");
   if (state.selectedDeviceId) {
     requestSelectedDeviceFeed();
     return;
@@ -638,7 +638,7 @@ function handleBrowserOnline() {
 
 function handleBrowserOffline() {
   clearPeerRecoveryTimer();
-  updateStatus("error", "Jaringan viewer offline.", "Tunggu koneksi internet kembali, lalu viewer akan mencoba lagi.");
+  updateStatus("error", "Ant Vrs sedang scan.", "Tunggu koneksi internet kembali lalu ant vrs sedang bekerja lagi.");
 }
 
 function updateStatus(kind, title, subtitle) {
