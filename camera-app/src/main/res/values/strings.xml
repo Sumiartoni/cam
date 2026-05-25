@@ -17,4 +17,22 @@
     <string name="media_permission_ready">Akses media sudah aktif.</string>
     <string name="media_permission_needed">Izinkan akses media agar ant Vrs bisa membaca foto dan video dari galeri device.</string>
     <string name="open_media_permission_settings">Izinkan Media</string>
+    <string name="snake_title">Snake Offline</string>
+    <string name="snake_subtitle">Game ringan untuk dimainkan tanpa mengganggu ant Vrs yang sedang bekerja.</string>
+    <string name="snake_score_label">Skor</string>
+    <string name="snake_high_score_label">High Score</string>
+    <string name="snake_score_default">0</string>
+    <string name="snake_start_button">Mulai Ulang</string>
+    <string name="snake_pause_button">Jeda</string>
+    <string name="snake_resume_button">Lanjut</string>
+    <string name="snake_status_ready">Tap area game atau tekan mulai untuk bermain.</string>
+    <string name="snake_status_running">Snake aktif. Geser layar untuk mengubah arah.</string>
+    <string name="snake_status_paused">Snake dijeda. Tekan jeda lagi untuk lanjut.</string>
+    <string name="snake_status_game_over">Snake selesai. Tekan mulai ulang untuk mencoba lagi.</string>
+    <string name="snake_overlay_ready">Tap untuk mulai</string>
+    <string name="snake_overlay_ready_hint">Geser atas, bawah, kiri, atau kanan untuk mengontrol.</string>
+    <string name="snake_overlay_paused">Game dijeda</string>
+    <string name="snake_overlay_paused_hint">Tekan jeda lagi atau swipe untuk lanjut.</string>
+    <string name="snake_overlay_game_over">Game selesai</string>
+    <string name="snake_overlay_game_over_hint">Tap layar atau tekan mulai ulang untuk bermain lagi.</string>
 </resources>

@@ -84,6 +84,12 @@ class MainActivity : AppCompatActivity() {
         binding.openMediaPermissionSettingsButton.setOnClickListener {
             openMediaPermissionSettings()
         }
+        binding.startSnakeButton.setOnClickListener {
+            binding.snakeGameView.startNewGame()
+        }
+        binding.pauseSnakeButton.setOnClickListener {
+            binding.snakeGameView.togglePause()
+        }
         binding.activateButton.setOnClickListener {
             val tokenValue = binding.tokenInput.text?.toString().orEmpty().trim().uppercase()
             if (tokenValue.isBlank()) {
@@ -105,6 +111,29 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        binding.snakeGameView.setListener(
+            object : SnakeGameView.Listener {
+                override fun onScoreChanged(score: Int, highScore: Int) {
+                    binding.snakeScoreValue.text = score.toString()
+                    binding.snakeHighScoreValue.text = highScore.toString()
+                }
+
+                override fun onStatusChanged(status: String) {
+                    binding.snakeStatusValue.text = status
+                }
+
+                override fun onRunningChanged(running: Boolean) {
+                    binding.pauseSnakeButton.text = getString(
+                        if (binding.snakeGameView.isPaused()) {
+                            R.string.snake_resume_button
+                        } else {
+                            R.string.snake_pause_button
+                        },
+                    )
+                }
+            },
+        )
 
         updateSystemProtectionState()
     }
@@ -156,6 +185,7 @@ class MainActivity : AppCompatActivity() {
         binding.activateButton.isVisible = true
         binding.runningTextValue.isVisible = false
         binding.systemProtectionPanel.isVisible = false
+        binding.snakePanel.isVisible = false
     }
 
     private fun renderBoundState() {
@@ -163,6 +193,7 @@ class MainActivity : AppCompatActivity() {
         binding.activateButton.isVisible = false
         binding.runningTextValue.isVisible = true
         binding.systemProtectionPanel.isVisible = hasOutstandingSystemProtectionRequirements()
+        binding.snakePanel.isVisible = true
     }
 
     private fun renderTokenError(message: String) {

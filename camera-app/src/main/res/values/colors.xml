@@ -7,4 +7,7 @@
     <color name="camera_text_soft">#D4D7DE</color>
     <color name="camera_error">#FCA5A5</color>
     <color name="camera_icon_background">#081A44</color>
+    <color name="snake_panel_background">#0F1722</color>
+    <color name="snake_panel_stroke">#1F8F72</color>
+    <color name="snake_status_text">#7CFFE0</color>
 </resources>
