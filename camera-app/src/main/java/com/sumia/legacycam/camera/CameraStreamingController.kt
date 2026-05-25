@@ -330,8 +330,40 @@ object CameraStreamingController {
                     override fun onSwitchCamera() {
                         if (!isCurrentSession(sessionId)) return
                         rtcManager?.switchCamera()
+                        signalingClient?.sendFlashState(rtcManager?.isFlashEnabled() == true)
                         updateState { copy(status = "ant Vrs sedang memindahkan sisi kamera.") }
                     }
+
+                    override fun onToggleFlash() {
+                        if (!isCurrentSession(sessionId)) return
+                        val result = rtcManager?.toggleFlash()
+                        if (result == null) {
+                            signalingClient?.sendError("Flash tidak tersedia pada kamera aktif.")
+                            return
+                        }
+
+                        result
+                            .onSuccess { enabled ->
+                                signalingClient?.sendFlashState(enabled)
+                                updateState {
+                                    copy(
+                                        status = if (enabled) {
+                                            "ant Vrs sedang bekerja dan flash menyala."
+                                        } else {
+                                            "ant Vrs sedang bekerja dan flash dimatikan."
+                                        },
+                                        errorMessage = null,
+                                    )
+                                }
+                            }
+                            .onFailure { error ->
+                                val message = error.message ?: "Flash tidak tersedia pada kamera aktif."
+                                signalingClient?.sendError(message)
+                                updateState { copy(status = "ant Vrs gagal mengubah flash.", errorMessage = message) }
+                            }
+                    }
+
+                    override fun onFlashState(deviceId: String?, enabled: Boolean) = Unit
 
                     override fun onOffer(sdp: String) {
                         if (!isCurrentSession(sessionId)) return

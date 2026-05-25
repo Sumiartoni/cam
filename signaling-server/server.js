@@ -862,6 +862,8 @@ wss.on("connection", (socket) => {
         "answer",
         "ice",
         "switch-camera",
+        "toggle-flash",
+        "flash-state",
         "gallery-list-request",
         "gallery-folders",
         "gallery-folder-request",

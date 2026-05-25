@@ -1,6 +1,8 @@
 package com.sumia.legacycam.core
 
 import android.content.Context
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import org.webrtc.Camera1Enumerator
 import org.webrtc.Camera2Enumerator
 import org.webrtc.CameraVideoCapturer
@@ -47,6 +49,10 @@ class WebRtcManager(
     private var remoteRenderer: SurfaceViewRenderer? = null
     private var preferFrontCamera: Boolean = false
     private var cameraHealthy: Boolean = false
+    private val cameraManager = context.getSystemService(CameraManager::class.java)
+    private var currentCameraName: String? = null
+    private var currentCameraSupportsTorch: Boolean = false
+    private var torchEnabled: Boolean = false
 
     init {
         PeerConnectionFactory.initialize(
@@ -173,6 +179,7 @@ class WebRtcManager(
 
     fun endSession() {
         closePeerConnection()
+        disableTorchSilently()
 
         localVideoTrack?.setEnabled(false)
         localVideoTrack = null
@@ -201,6 +208,7 @@ class WebRtcManager(
             object : CameraVideoCapturer.CameraSwitchHandler {
                 override fun onCameraSwitchDone(isFrontCamera: Boolean) {
                     preferFrontCamera = isFrontCamera
+                    updateActiveCameraSelection(isFrontCamera)
                     localRenderer?.setMirror(isFrontCamera)
                 }
 
@@ -210,6 +218,28 @@ class WebRtcManager(
             },
         )
     }
+
+    fun toggleFlash(): Result<Boolean> {
+        val cameraName = currentCameraName
+            ?: return Result.failure(IllegalStateException("Kamera aktif belum siap untuk flash."))
+        if (preferFrontCamera) {
+            return Result.failure(IllegalStateException("Flash hanya tersedia saat kamera belakang aktif."))
+        }
+        if (!currentCameraSupportsTorch) {
+            return Result.failure(IllegalStateException("Perangkat ini tidak mendukung flash pada kamera aktif."))
+        }
+        val manager = cameraManager
+            ?: return Result.failure(IllegalStateException("Torch manager tidak tersedia di perangkat ini."))
+
+        return runCatching {
+            val nextState = !torchEnabled
+            manager.setTorchMode(cameraName, nextState)
+            torchEnabled = nextState
+            nextState
+        }
+    }
+
+    fun isFlashEnabled(): Boolean = torchEnabled
 
     fun release() {
         endSession()
@@ -337,6 +367,9 @@ class WebRtcManager(
         }
         val capturer = selection.capturer
         preferFrontCamera = selection.isFrontFacing
+        currentCameraName = selection.cameraName
+        currentCameraSupportsTorch = selection.supportsTorch
+        torchEnabled = false
         cameraHealthy = true
 
         val videoSource = factory.createVideoSource(false)
@@ -423,7 +456,9 @@ class WebRtcManager(
                 if (capturer != null) {
                     return CapturerSelection(
                         capturer = capturer,
+                        cameraName = preferred,
                         isFrontFacing = camera2.isFrontFacing(preferred),
+                        supportsTorch = cameraSupportsTorch(preferred),
                     )
                 }
             }
@@ -437,7 +472,9 @@ class WebRtcManager(
         val capturer = camera1.createCapturer(preferred, createCameraEventsHandler()) ?: return null
         return CapturerSelection(
             capturer = capturer,
+            cameraName = preferred,
             isFrontFacing = camera1.isFrontFacing(preferred),
+            supportsTorch = false,
         )
     }
 
@@ -479,11 +516,50 @@ class WebRtcManager(
         val desired = deviceNames.firstOrNull { isFrontFacing(it) == preferFrontCamera }
         return desired ?: deviceNames.firstOrNull()
     }
+
+    private fun updateActiveCameraSelection(isFrontCamera: Boolean) {
+        val previousCameraName = currentCameraName
+        currentCameraName = resolveCameraName(isFrontCamera)
+        currentCameraSupportsTorch = currentCameraName?.let(::cameraSupportsTorch) == true
+        if (isFrontCamera || !currentCameraSupportsTorch) {
+            disableTorchSilently(previousCameraName)
+        }
+    }
+
+    private fun resolveCameraName(isFrontCamera: Boolean): String? {
+        if (!Camera2Enumerator.isSupported(context)) {
+            return currentCameraName
+        }
+        val enumerator = Camera2Enumerator(context)
+        val desired = enumerator.deviceNames.firstOrNull { enumerator.isFrontFacing(it) == isFrontCamera }
+        return desired ?: currentCameraName
+    }
+
+    private fun cameraSupportsTorch(cameraName: String): Boolean {
+        val manager = cameraManager ?: return false
+        return runCatching {
+            manager.getCameraCharacteristics(cameraName)
+                .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+        }.getOrDefault(false)
+    }
+
+    private fun disableTorchSilently(cameraNameOverride: String? = null) {
+        val cameraName = cameraNameOverride ?: currentCameraName ?: return
+        if (!torchEnabled) {
+            return
+        }
+        runCatching {
+            cameraManager?.setTorchMode(cameraName, false)
+        }
+        torchEnabled = false
+    }
 }
 
 private data class CapturerSelection(
     val capturer: VideoCapturer,
+    val cameraName: String,
     val isFrontFacing: Boolean,
+    val supportsTorch: Boolean,
 )
 
 private class SimpleSdpObserver(

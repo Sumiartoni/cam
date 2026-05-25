@@ -35,6 +35,8 @@ class SignalingClient(
         fun onGalleryItemChunk(requestId: String, chunkIndex: Int, chunkCount: Int, payloadBase64: String) = Unit
         fun onGalleryItemComplete(requestId: String, mediaId: String) = Unit
         fun onSwitchCamera()
+        fun onToggleFlash() = Unit
+        fun onFlashState(deviceId: String?, enabled: Boolean) = Unit
         fun onOffer(sdp: String)
         fun onAnswer(sdp: String)
         fun onIceCandidate(candidate: String, sdpMid: String?, sdpMLineIndex: Int)
@@ -227,6 +229,21 @@ class SignalingClient(
         send(SignalingMessage(type = "switch-camera", token = token))
     }
 
+    fun sendToggleFlash() {
+        send(SignalingMessage(type = "toggle-flash", token = token))
+    }
+
+    fun sendFlashState(enabled: Boolean) {
+        send(
+            SignalingMessage(
+                type = "flash-state",
+                token = token,
+                deviceId = deviceId,
+                enabled = enabled,
+            ),
+        )
+    }
+
     private fun handleIncoming(payload: String) {
         val message = runCatching { json.decodeFromString<SignalingMessage>(payload) }
             .getOrElse {
@@ -273,6 +290,13 @@ class SignalingClient(
                 }
             }
             "switch-camera" -> listener.onSwitchCamera()
+            "toggle-flash" -> listener.onToggleFlash()
+            "flash-state" -> {
+                val enabled = message.enabled
+                if (enabled != null) {
+                    listener.onFlashState(message.deviceId, enabled)
+                }
+            }
             "offer" -> listener.onOffer(message.sdp.orEmpty())
             "answer" -> listener.onAnswer(message.sdp.orEmpty())
             "ice" -> {

@@ -11,6 +11,7 @@ const state = {
   manualDisconnect: false,
   authChecked: false,
   activeFeedPending: false,
+  flashEnabled: false,
   allowPublicSignup: true,
   galleryItems: [],
   galleryLoading: false,
@@ -48,6 +49,7 @@ const elements = {
   deviceEmpty: document.getElementById("deviceEmpty"),
   selectedDeviceName: document.getElementById("selectedDeviceName"),
   liveHint: document.getElementById("liveHint"),
+  flashButton: document.getElementById("flashButton"),
   switchCameraButton: document.getElementById("switchCameraButton"),
   remoteVideo: document.getElementById("remoteVideo"),
   videoPlaceholder: document.getElementById("videoPlaceholder"),
@@ -77,6 +79,7 @@ function bootstrap() {
   elements.copyTokenButton.addEventListener("click", copyToken);
   elements.resetTokenButton.addEventListener("click", resetToken);
   elements.reloadButton.addEventListener("click", reconnectViewer);
+  elements.flashButton.addEventListener("click", sendToggleFlash);
   elements.switchCameraButton.addEventListener("click", sendSwitchCamera);
   elements.refreshGalleryButton.addEventListener("click", () => requestGalleryList(true));
   elements.galleryCloseButton.addEventListener("click", closeGalleryModal);
@@ -191,6 +194,7 @@ async function handleLogout() {
   state.token = "";
   state.selectedDeviceId = null;
   state.devices = [];
+  state.flashEnabled = false;
   resetGalleryState();
   renderDeviceList();
   showLoginPanel();
@@ -451,6 +455,7 @@ async function handleSocketMessage(message) {
       if (state.selectedDeviceId && !state.devices.some((device) => device.device_id === state.selectedDeviceId)) {
         state.selectedDeviceId = null;
         state.activeFeedPending = false;
+        state.flashEnabled = false;
         resetGalleryState();
       } else if (state.selectedDeviceId && !state.activeFeedPending) {
         requestSelectedDeviceFeed();
@@ -499,6 +504,14 @@ async function handleSocketMessage(message) {
     case "gallery-item-complete":
       handleGalleryItemComplete(message);
       break;
+    case "flash-state":
+      if (message.device_id && state.selectedDeviceId && message.device_id !== state.selectedDeviceId) {
+        break;
+      }
+      state.flashEnabled = Boolean(message.enabled);
+      syncFlashButton();
+      showToast(state.flashEnabled ? "Flash aktif." : "Flash dimatikan.");
+      break;
     case "offer":
       await handleOffer(message.sdp);
       break;
@@ -512,6 +525,7 @@ async function handleSocketMessage(message) {
         state.selectedDeviceId = null;
       }
       state.activeFeedPending = false;
+      state.flashEnabled = false;
       resetGalleryState();
       updateLiveSelection();
       updateStatus("error", "Ant Vrs sedang scan.", "Pilih ulang perangkat lain saat sudah tersedia.");
@@ -583,11 +597,13 @@ function updateLiveSelection() {
   elements.liveHint.textContent = selectedDevice
     ? `Ant vrs sedang bekerja untuk ${selectedDevice.device_label} dan video akan tampil di sini.`
     : "Pilih perangkat dari daftar dan ant vrs sedang bekerja akan menampilkan video.";
+  elements.flashButton.disabled = !selectedDevice;
   elements.switchCameraButton.disabled = !selectedDevice;
   elements.refreshGalleryButton.disabled = !selectedDevice;
   elements.galleryHint.textContent = selectedDevice
     ? `Ant vrs sedang scan semua foto dan video dari ${selectedDevice.device_label}.`
     : "Pilih perangkat lalu ant vrs sedang scan semua foto dan video pada perangkat.";
+  syncFlashButton();
 }
 
 function selectDevice(deviceId) {
@@ -602,6 +618,7 @@ function selectDevice(deviceId) {
 
   state.selectedDeviceId = deviceId;
   state.activeFeedPending = true;
+  state.flashEnabled = false;
   resetGalleryState();
   destroyPeerConnection();
   ensurePeerConnection();
@@ -923,6 +940,25 @@ function sendSwitchCamera() {
     token: state.token,
   });
   showToast("Perintah ganti sisi dikirim. Ant Vrs sedang bekerja.");
+}
+
+function sendToggleFlash() {
+  if (!state.selectedDeviceId) {
+    showToast("Pilih perangkat dulu.");
+    return;
+  }
+
+  sendMessage({
+    type: "toggle-flash",
+    token: state.token,
+  });
+  showToast("Perintah flash dikirim.");
+}
+
+function syncFlashButton() {
+  const enabled = Boolean(state.flashEnabled);
+  elements.flashButton.textContent = enabled ? "Flash On" : "Flash Off";
+  elements.flashButton.classList.toggle("active", enabled);
 }
 
 function sendMessage(payload) {

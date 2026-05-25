@@ -90,6 +90,11 @@ object ViewerController {
         updateState { copy(status = "Viewer mengirim perintah pindah kamera ke device cam terpilih.", errorMessage = null) }
     }
 
+    fun toggleFlash() {
+        signalingClient?.sendToggleFlash()
+        updateState { copy(status = "Viewer mengirim perintah flash ke device cam terpilih.", errorMessage = null) }
+    }
+
     fun attachRemoteRenderer(renderer: SurfaceViewRenderer) {
         attachedRemoteRenderer = renderer
         rtcManager?.attachRemoteRenderer(renderer)
@@ -220,6 +225,10 @@ object ViewerController {
                 }
 
                 override fun onSwitchCamera() = Unit
+
+                override fun onToggleFlash() = Unit
+
+                override fun onFlashState(deviceId: String?, enabled: Boolean) = Unit
 
                 override fun onOffer(sdp: String) {
                     if (!isCurrentSession(sessionId)) return

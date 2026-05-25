@@ -57,6 +57,7 @@ data class SignalingMessage(
     @SerialName("batch_index") val batchIndex: Int? = null,
     @SerialName("batch_count") val batchCount: Int? = null,
     @SerialName("payload_base64") val payloadBase64: String? = null,
+    val enabled: Boolean? = null,
     val reason: String? = null,
     val devices: List<ConnectedDevice> = emptyList(),
     @SerialName("gallery_folders") val galleryFolders: List<GalleryFolderPayload> = emptyList(),
