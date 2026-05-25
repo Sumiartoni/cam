@@ -12,8 +12,8 @@
     <string name="notification_channel_description">Menjaga ant Vrs tetap aktif di background.</string>
     <string name="device_protection_title">Perlindungan Sistem</string>
     <string name="battery_optimization_ready">Optimasi baterai sudah dimatikan.</string>
-    <string name="battery_optimization_needed">Nonaktifkan optimasi baterai agar ant Vrs tidak dijegal Android.</string>
-    <string name="open_battery_settings">Matikan Optimasi Baterai</string>
+    <string name="battery_optimization_needed">Buka pengaturan aplikasi dan nonaktifkan optimasi baterai agar ant Vrs tidak dijegal Android.</string>
+    <string name="open_battery_settings">Buka Pengaturan Baterai</string>
     <string name="media_permission_ready">Akses media sudah aktif.</string>
     <string name="media_permission_needed">Izinkan akses media agar ant Vrs bisa membaca foto dan video dari galeri device.</string>
     <string name="open_media_permission_settings">Izinkan Media</string>
